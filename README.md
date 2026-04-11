@@ -5,8 +5,8 @@
 
 
 Select your language / Seleziona la lingua:
-- [🇮🇹 Italiano](#-progetto-di-stage-magistrale)
-- [🇬🇧 English](#-masters-internship-project)
+- [🇮🇹 Italiano](#versione-italiana)
+- [🇬🇧 English](#english-version)
 
 ---
 
