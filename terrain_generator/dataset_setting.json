@@ -1,0 +1,106 @@
+{
+    "dataset_settings": {
+        "num_terrains_to_generate": 2,
+        "output_folder_renders": "../data/renders",
+        "output_folder_meshes": "../data/meshes",
+        "export_render_png": true,
+        "export_mesh_off": false
+    },
+
+    "node_parameters": {
+        "Landscape Size": {
+            "type": "float",
+            "min": 1.0,
+            "max": 10.0
+        },
+
+        "Vertices Count": {
+            "type": "int",
+            "min": 2,
+            "max": 2048
+        },
+
+        "Base Seed": {
+            "type": "float",
+            "min": 0.0,
+            "max": 10.0
+        },
+
+        "Base Scale": {
+            "type": "float",
+            "min": 0.0,
+            "max": 1.0
+        },
+
+        "Base Detail": {
+            "type": "float",
+            "min": 0.0,
+            "max": 15.0
+        },
+
+        "Rock Seed": {
+            "type": "float",
+            "min": 0.0,
+            "max": 10.0
+        },
+
+        "Rock Scale": {
+            "type": "float",
+            "min": 0.0,
+            "max": 1.0
+        },
+
+        "Rock Detail": {
+            "type": "float",
+            "min": 0.0,
+            "max": 15.0
+        },
+
+        "Base Roughness": {
+            "type": "float",
+            "min": 0.0,
+            "max": 1.0
+        },
+
+        "Rock Roughness": {
+            "type": "float",
+            "min": 0.0,
+            "max": 1.0
+        },
+
+        "Detail Weight": {
+            "type": "float",
+            "min": -1.0,
+            "max": 1.0
+        },
+
+        "Height Scale": {
+            "type": "float",
+            "min": -1.0,
+            "max": 1.0
+        },
+
+        "Clip Valley": {
+            "type": "float",
+            "min": 0.0,
+            "max": 3.0
+        },
+
+        "Clip Peaks": {
+            "type": "float",
+            "min": 0.0,
+            "max": 1.5
+        },
+
+        "Elevation Power": {
+            "type": "float",
+            "min": 1.0,
+            "max": 15.0
+        },
+
+        "Second Material": {
+            "type": "boolean",
+            "probability": 0.0
+        }
+    }
+}

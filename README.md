@@ -46,3 +46,20 @@ L'obiettivo è creare una pipeline completa che parta dalla modellazione procedu
 
 
 [Torna su](#procedural-terrain-generation--ai-analysis-for-geological-applications)
+
+
+## 📁 Repository Structure / Struttura della Repository
+
+```text
+project/
+├── README.md
+├── requirements.txt
+├── .gitignore
+│
+├── terrain_generator/                  # Blender terrain generator
+│   ├── test_terrain_generator.blend
+│
+├── scripts/                 # Python scripts
+├── data/                    # Generated datasets
+├──
+└──
