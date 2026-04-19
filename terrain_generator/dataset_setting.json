@@ -1,8 +1,9 @@
 {
     "dataset_settings": {
+        "generation_mode": "fixed",
         "num_terrains_to_generate": 2,
-        "output_folder_renders": "../data/renders",
-        "output_folder_meshes": "../data/meshes",
+        "output_folder_renders": "data/renders",
+        "output_folder_meshes": "data/meshes",
         "export_render_png": true,
         "export_mesh_off": false
     },
@@ -10,96 +11,112 @@
     "node_parameters": {
         "Landscape Size": {
             "type": "float",
+            "value": 10.0,
             "min": 1.0,
             "max": 10.0
         },
 
         "Vertices Count": {
             "type": "int",
+            "value": 128,
             "min": 2,
             "max": 2048
         },
 
         "Base Seed": {
             "type": "float",
+            "value": 1.970,
             "min": 0.0,
             "max": 10.0
         },
 
         "Base Scale": {
             "type": "float",
+            "value": 0.110,
             "min": 0.0,
             "max": 1.0
         },
 
         "Base Detail": {
             "type": "float",
+            "value": 15.0,
             "min": 0.0,
             "max": 15.0
         },
 
         "Rock Seed": {
             "type": "float",
+            "value": 2.590,
             "min": 0.0,
             "max": 10.0
         },
 
         "Rock Scale": {
             "type": "float",
+            "value": 0.080,
             "min": 0.0,
             "max": 1.0
         },
 
         "Rock Detail": {
             "type": "float",
+            "value": 15.0,
             "min": 0.0,
             "max": 15.0
         },
 
         "Base Roughness": {
             "type": "float",
+            "value": 0.550,
             "min": 0.0,
             "max": 1.0
         },
 
         "Rock Roughness": {
             "type": "float",
+            "value": 0.550,
             "min": 0.0,
             "max": 1.0
         },
 
         "Detail Weight": {
             "type": "float",
+            "value": 1.0,
             "min": -1.0,
             "max": 1.0
         },
 
         "Height Scale": {
             "type": "float",
+            "value": 0.830,
             "min": -1.0,
             "max": 1.0
         },
 
         "Clip Valley": {
             "type": "float",
+            "value": 1.340,
             "min": 0.0,
             "max": 3.0
         },
 
         "Clip Peaks": {
             "type": "float",
+            "value": 1.090,
             "min": 0.0,
             "max": 1.5
         },
 
         "Elevation Power": {
             "type": "float",
+            "value": 2.010,
             "min": 1.0,
             "max": 15.0
         },
 
         "Second Material": {
             "type": "boolean",
+            "value": true,
             "probability": 0.0
         }
     }

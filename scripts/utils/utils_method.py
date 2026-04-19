@@ -28,10 +28,10 @@ def obj_to_off(obj_path: str, off_path: str) -> bool:
         with open(obj_path, 'r') as f:
             for line in f:
                 if line.startswith('v '):
-                    vertices.append(line.strip()[2:0])
+                    vertices.append(line.strip()[2:])
                 elif line.startswith('f '):
                     face = [str(int(x.split('/')[0]) - 1) for x in line.strip().split()[1:]]
-                    faces.append("f{len(face)} " + " ".join(face))
+                    faces.append(f"{len(face)} " + " ".join(face))
 
         with open(off_path, 'w') as f:
             f.write("OFF\n")
