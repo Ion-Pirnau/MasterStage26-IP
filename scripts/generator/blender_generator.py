@@ -3,9 +3,10 @@ import bpy, json, random, sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__))) 
 
 from utils.utils_method import get_full_path, obj_to_off
-from utils.constants import CONFIG_FILE, TERRAIN_NAME, MODIFIERS_NAME_GM, NAME_GENERATED_TERRAIN, EXTENSION_RENDERING
+from utils.constants import CONFIG_FILE, TERRAIN_NAME, MODIFIERS_NAME_GM, NAME_GENERATED_TERRAIN, EXTENSION_RENDERING, NODE_MAP
 
 def load_config():
+    print(CONFIG_FILE)
     try:
         with open(CONFIG_FILE, 'r') as f:
             return json.load(f)
@@ -14,8 +15,10 @@ def load_config():
         return None
 
 def set_modifier_value(modifier, identifier, value):
-    if identifier in modifier.keys():
-        modifier[identifier] = value
+    blender_key = NODE_MAP.get(identifier)
+    print(blender_key)
+    if blender_key in modifier.keys():
+        modifier[blender_key] = value
     else:
         print(f"Attention: Input '{identifier}' not found in Geometry Nodes!")
 
@@ -26,6 +29,11 @@ def generate_terrain():
 
     terrain_obj = bpy.data.objects.get(TERRAIN_NAME)
     mod = terrain_obj.modifiers.get(MODIFIERS_NAME_GM)
+
+    print("\n--- DEBUG IDENTIFIERS GEOMETRY NODES ---")
+    for key, value in mod.items():
+        print(f"Intern Key is: '{key}' (Actual value: {value})")
+    print("-------------------------------------------\n")
 
     mode = settings.get("generate_mode", "fixed")
     num_to_generate = settings["num_terrains_to_generate"] if mode == "random" else 1
@@ -51,6 +59,7 @@ def generate_terrain():
         bpy.context.view_layer.update()
 
         if settings["export_render_png"]:
+            print(get_full_path(settings["output_folder_renders"]))
             render_path = get_full_path(settings["output_folder_renders"], f"{NAME_GENERATED_TERRAIN}{i:04d}.{EXTENSION_RENDERING}")
             bpy.context.scene.render.filepath = render_path
             bpy.ops.render.render(write_still=True)

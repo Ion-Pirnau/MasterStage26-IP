@@ -18,21 +18,21 @@
 
         "Vertices Count": {
             "type": "int",
-            "value": 128,
+            "value": 256,
             "min": 2,
             "max": 2048
         },
 
         "Base Seed": {
             "type": "float",
-            "value": 1.970,
+            "value": 2.210,
             "min": 0.0,
             "max": 10.0
         },
 
         "Base Scale": {
             "type": "float",
-            "value": 0.110,
+            "value": 1.0,
             "min": 0.0,
             "max": 1.0
         },
@@ -46,14 +46,14 @@
 
         "Rock Seed": {
             "type": "float",
-            "value": 2.590,
+            "value": 1.780,
             "min": 0.0,
             "max": 10.0
         },
 
         "Rock Scale": {
             "type": "float",
-            "value": 0.080,
+            "value": 0.040,
             "min": 0.0,
             "max": 1.0
         },
@@ -81,35 +81,35 @@
 
         "Detail Weight": {
             "type": "float",
-            "value": 1.0,
+            "value": 0.660,
             "min": -1.0,
             "max": 1.0
         },
 
         "Height Scale": {
             "type": "float",
-            "value": 0.830,
+            "value": 0.700,
             "min": -1.0,
             "max": 1.0
         },
 
         "Clip Valley": {
             "type": "float",
-            "value": 1.340,
+            "value": 1.320,
             "min": 0.0,
             "max": 3.0
         },
 
         "Clip Peaks": {
             "type": "float",
-            "value": 1.090,
+            "value": 0.940,
             "min": 0.0,
             "max": 1.5
         },
 
         "Elevation Power": {
             "type": "float",
-            "value": 2.010,
+            "value": 0.940,
             "min": 1.0,
             "max": 15.0
         },
