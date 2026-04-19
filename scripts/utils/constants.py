@@ -31,3 +31,7 @@ NODE_MAP = {
     "Elevation Power": "Socket_17",
     "Second Material": "Socket_18"
 }
+
+FILE_FORMAT_IMG = "OPEN_EXR"
+NAME_HEIGHTMAPS = "heightmap3_"
+EXTENSION_HEIGHTMAP = "exr"

@@ -4,8 +4,10 @@
         "num_terrains_to_generate": 2,
         "output_folder_renders": "data/renders",
         "output_folder_meshes": "data/meshes",
+        "output_folder_maps": "data/heightmaps",
         "export_render_png": false,
-        "export_mesh_off": true
+        "export_mesh_off": false,
+        "export_heightmap": true
     },
 
     "node_parameters": {
@@ -27,7 +29,7 @@
             "type": "float",
             "value": 2.210,
             "min": 0.0,
-            "max": 10.0
+            "max": 100.0
         },
 
         "Base Scale": {
@@ -46,9 +48,9 @@
 
         "Rock Seed": {
             "type": "float",
-            "value": 1.780,
+            "value": 20.99,
             "min": 0.0,
-            "max": 10.0
+            "max": 100.0
         },
 
         "Rock Scale": {
