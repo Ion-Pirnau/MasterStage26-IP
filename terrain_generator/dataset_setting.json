@@ -4,8 +4,8 @@
         "num_terrains_to_generate": 2,
         "output_folder_renders": "data/renders",
         "output_folder_meshes": "data/meshes",
-        "export_render_png": true,
-        "export_mesh_off": false
+        "export_render_png": false,
+        "export_mesh_off": true
     },
 
     "node_parameters": {

@@ -64,6 +64,21 @@ def generate_terrain():
             bpy.context.scene.render.filepath = render_path
             bpy.ops.render.render(write_still=True)
             print(f"Render saved in {render_path}")
+        
+        if settings["export_mesh_off"]:
+            obj_path = get_full_path(settings["output_folder_meshes"], f"terrain_{i:04d}.obj")
+            off_path = get_full_path(settings["output_folder_meshes"], f"terrain_{i:04d}.off")
+
+            bpy.ops.object.select_all(action="DESELECT")
+            terrain_obj.select_set(True)
+
+            bpy.ops.wm.obj_export(filepath=obj_path, export_selected_objects=True)
+
+            obj_to_off(obj_path, off_path)
+
+            print(f"Mesh OFF salvata in {off_path}")
+
+
 
 if __name__ == "__main__" :
     generate_terrain()

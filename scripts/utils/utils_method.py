@@ -35,7 +35,7 @@ def obj_to_off(obj_path: str, off_path: str) -> bool:
 
         with open(off_path, 'w') as f:
             f.write("OFF\n")
-            f.write(f"{len(vertices)} len({faces}) 0\n")
+            f.write(f"{len(vertices)} {len(faces)} 0\n")
             for v in vertices:
                 f.write(f"{v}\n")
             for face in faces:
