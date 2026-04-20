@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import numpy as np
 
 def obj_to_off(obj_path: str, off_path: str) -> bool:
 
@@ -58,7 +59,7 @@ def get_project_root() -> Path:
     current_path = Path(__file__).resolve()
 
     for parent in [current_path] + list(current_path.parents):
-        if (parent / 'README.md').exists():
+        if (parent / '.gitignore').exists():
             return parent
     
     return current_path.parent
@@ -108,3 +109,59 @@ def is_valid_file(path: str) -> bool:
     """
     p = Path(path)
     return p.exists() and p.is_file()
+
+
+def mesh_from_asc(path_asc):
+    header = {}
+
+    with open(path_asc, 'r') as f:
+        for _ in range(6):
+            line = f.readline().split()
+            header[line[0].lower()] = float(line[1])
+    
+    cols = int(header['ncols'])
+    rows = int(header['nrows'])
+    x_ll = header['xllcorner']
+    y_ll = header['yllcorner']
+    cell_size = header['cellsize']
+    nodata = header.get('nodata_value', -9999)
+
+    z_grid = np.loadtxt(path_asc, skiprows=6)
+
+    x = x_ll + np.arange(cols) * cell_size
+
+    y = y_ll + (rows - 1 - np.arange(rows)) * cell_size
+
+    x_grid, y_grid = np.meshgrid(x,y)
+
+    print(x_grid)
+    print(y_grid)
+
+    vertices = np.stack((x_grid.flatten(), y_grid.flatten(), z_grid.flatten()), axis=1)
+
+    faces = []
+
+    for r in range(rows - 1):
+        for c in range(cols - 1):
+            v_top_left = r * cols + c
+            v_top_right = v_top_left + 1
+            v_bottom_left = (r + 1) * cols + c
+            v_bottom_right = v_bottom_left + 1
+
+            faces.append([v_top_left, v_bottom_left, v_top_right])
+            faces.append([v_top_right, v_bottom_left, v_bottom_right])
+
+    return vertices, np.array(faces)
+
+
+def save_off(vertices, faces, filename):
+    with open(filename, 'w') as f:
+        f.write("OFF\n")
+
+        f.write(f"{len(vertices)} {len(faces)} 0\n")
+
+        for v in vertices:
+            f.write(f"{v[0]} {v[1]} {v[2]}\n")
+        
+        for face in faces:
+            f.write(f"3 {face[0]} {face[1]} {face[2]}\n")
