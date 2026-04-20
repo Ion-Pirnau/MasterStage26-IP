@@ -9,7 +9,7 @@
         "export_mesh_off": false,
         "export_heightmap_exr": false,
         "export_heightmap_asc": false,
-        "export_hillshade": true
+        "export_hillshade": false
     },
 
     "node_parameters": {

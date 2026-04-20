@@ -58,12 +58,14 @@ project/
 │
 ├── terrain_generator/                  # Blender terrain generator
 │   ├── test_terrain_generator.blend
-│   └── dataset_setting.json            # Set configuration
+│   ├── dataset_setting.json            # Set configuration
+│   └── README.md
 │
 ├── scripts/                 # Python scripts
 │   ├── generator/
 │   ├── utils/
-│   └── main.py
+│   ├── main.py
+│   └── README.md
 │
 ├── data/                    # Generated data
 │   ├── heightmaps/
