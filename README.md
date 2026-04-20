@@ -38,8 +38,8 @@ Questa repository ospita il progetto di **Stage Magistrale** focalizzato sulla g
 L'obiettivo è creare una pipeline completa che parta dalla modellazione procedurale di dati topografici fino all'addestramento di modelli di Deep Learning (Diffusion Model) per la generazione sintetica di terreni, validati poi tramite strumenti di segmentazione e detection (SAM2/SAM3).
 
 ### 🛠️ Tech Stack
-- **Software Modellazione 3d:** Blender (Python API)
-- **Linguaggi di Programmazione:** Python o C++
+- **Software Modellazione 3d:** Blender `(used 4.2)` (Python API)
+- **Linguaggi di Programmazione:** Python (3.11+ `(used 3.11.9)`) o C++
 - **AI/ML:** PyTorch, Stable Diffusion, LoRA, SAM2/SAM3 (da definire meglio)
 - **Geodata:** GDAL, GeoTIFF, ASC formats
 - **Rendering:** Grayscale Maps
