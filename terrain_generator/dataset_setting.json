@@ -7,7 +7,9 @@
         "output_folder_maps": "data/heightmaps",
         "export_render_png": false,
         "export_mesh_off": false,
-        "export_heightmap": true
+        "export_heightmap_exr": false,
+        "export_heightmap_asc": false,
+        "export_hillshade": true
     },
 
     "node_parameters": {
@@ -27,14 +29,14 @@
 
         "Base Seed": {
             "type": "float",
-            "value": 2.210,
+            "value": 1.970,
             "min": 0.0,
             "max": 100.0
         },
 
         "Base Scale": {
             "type": "float",
-            "value": 1.0,
+            "value": 0.11,
             "min": 0.0,
             "max": 1.0
         },
@@ -48,14 +50,14 @@
 
         "Rock Seed": {
             "type": "float",
-            "value": 20.99,
+            "value": 10.0,
             "min": 0.0,
             "max": 100.0
         },
 
         "Rock Scale": {
             "type": "float",
-            "value": 0.040,
+            "value": 0.080,
             "min": 0.0,
             "max": 1.0
         },
@@ -83,35 +85,35 @@
 
         "Detail Weight": {
             "type": "float",
-            "value": 0.660,
+            "value": 1.0,
             "min": -1.0,
             "max": 1.0
         },
 
         "Height Scale": {
             "type": "float",
-            "value": 0.700,
+            "value": 0.830,
             "min": -1.0,
             "max": 1.0
         },
 
         "Clip Valley": {
             "type": "float",
-            "value": 1.320,
+            "value": 1.340,
             "min": 0.0,
             "max": 3.0
         },
 
         "Clip Peaks": {
             "type": "float",
-            "value": 0.940,
+            "value": 1.090,
             "min": 0.0,
             "max": 1.5
         },
 
         "Elevation Power": {
             "type": "float",
-            "value": 0.940,
+            "value": 2.010,
             "min": 1.0,
             "max": 15.0
         },

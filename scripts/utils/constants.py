@@ -13,6 +13,9 @@ MODIFIERS_NAME_GM = "GeometryNodes"
 NAME_GENERATED_TERRAIN = "terrain_"
 EXTENSION_RENDERING = "png"
 
+GENERATION_MODE_RANDOM = "random"
+GENERATION_MODE_FIXED = "fixed"
+
 NODE_MAP = {
     "Landscape Size": "Socket_2",   # Esempio: cambia Socket_1 con quello vero!
     "Vertices Count": "Socket_4",
@@ -32,6 +35,11 @@ NODE_MAP = {
     "Second Material": "Socket_18"
 }
 
+INBLEND_IMAGE_NAME = "Heightmap_Export"
 FILE_FORMAT_IMG = "OPEN_EXR"
-NAME_HEIGHTMAPS = "heightmap3_"
-EXTENSION_HEIGHTMAP = "exr"
+NAME_HEIGHTMAPS = "heightmap_"
+NAME_HILLSHADE = "hillshade_"
+EXTENSION_HEIGHTMAP_EXR = "exr"
+EXTENSION_HEIGHTMAP_ASC = "asc"
+EXTENSION_HILLSHADE = "PNG"
+COLOR_MODE_HILLSHADE = "BW"
