@@ -65,6 +65,7 @@ project/
 │   ├── generator/
 │   ├── utils/
 │   ├── main.py
+│   ├── test_main.py        # python script per test, usato per testare metodo di costruzione mesh triangolare da ASC a OFF
 │   └── README.md
 │
 ├── data/                    # Generated data
