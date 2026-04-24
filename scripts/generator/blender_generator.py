@@ -408,7 +408,7 @@ def export_hillshade(obj, filepath, res_x, res_y):
     eval_obj = obj.evaluated_get(depsgraph)
     
     mod = obj.modifiers.get("GeometryNodes")
-    landscape_size = mod["Socket_2"] if mod and "Socket_2" in mod else 10.0
+    landscape_size = mod[LANDSCAPE_NODE_MODIFIER] if mod and LANDSCAPE_NODE_MODIFIER in mod else 10.0
 
     cam = bpy.context.scene.camera
     if cam:

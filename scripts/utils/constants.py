@@ -17,7 +17,7 @@ GENERATION_MODE_RANDOM = "random"
 GENERATION_MODE_FIXED = "fixed"
 
 NODE_MAP = {
-    "Landscape Size": "Socket_2",   # Esempio: cambia Socket_1 con quello vero!
+    "Landscape Size": "Socket_2",
     "Vertices Count": "Socket_4",
     "Base Seed": "Socket_5",
     "Base Scale": "Socket_6",
@@ -37,6 +37,7 @@ NODE_MAP = {
 
 CAM_CLIP_END = 50000.0
 SUN_Z_LOCATION = 10000
+LANDSCAPE_NODE_MODIFIER = "Socket_2"
 INBLEND_IMAGE_NAME = "Heightmap_Export"
 FILE_FORMAT_IMG = "OPEN_EXR"
 NAME_HEIGHTMAPS = "heightmap_"
