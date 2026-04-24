@@ -407,21 +407,6 @@ def export_hillshade(obj, filepath, res_x, res_y):
     depsgraph = bpy.context.evaluated_depsgraph_get()
     eval_obj = obj.evaluated_get(depsgraph)
     
-    bbox = [eval_obj.matrix_world @ mathutils.Vector(b) for b in eval_obj.bound_box]
-    min_x = min(v.x for v in bbox)
-    max_x = max(v.x for v in bbox)
-    min_y = min(v.y for v in bbox)
-    max_y = max(v.y for v in bbox)
-
-    print(max_x)
-    print(min_x)
-
-    print(max_y)
-    print(min_y)
-    
-    size_x = (max_x - min_x) * 2
-    size_y = (max_y - min_y) * 2
-
     mod = obj.modifiers.get("GeometryNodes")
     landscape_size = mod["Socket_2"] if mod and "Socket_2" in mod else 10.0
 
@@ -429,15 +414,10 @@ def export_hillshade(obj, filepath, res_x, res_y):
     if cam:
         cam.data.type = 'ORTHO'
         cam.data.clip_end = CAM_CLIP_END
-        #cam.data.ortho_scale = max(size_x, size_y)
         cam.data.ortho_scale = landscape_size
-       
-        center_x = (min_x + max_x) / 2
-        center_y = (min_y + max_y) / 2
-        cam.location = (center_x, center_y, 100)
+
+        cam.location = (0, 0, 1000) 
         cam.rotation_euler = (0, 0, 0)
-        #cam.location = (0, 0, 1000) 
-        #cam.rotation_euler = (0, 0, 0)
     else:
         print("ATTENTION: No active camera in the scene.")
 
