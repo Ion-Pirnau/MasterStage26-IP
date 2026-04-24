@@ -35,6 +35,8 @@ NODE_MAP = {
     "Second Material": "Socket_18"
 }
 
+CAM_CLIP_END = 50000.0
+SUN_Z_LOCATION = 10000
 INBLEND_IMAGE_NAME = "Heightmap_Export"
 FILE_FORMAT_IMG = "OPEN_EXR"
 NAME_HEIGHTMAPS = "heightmap_"

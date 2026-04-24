@@ -199,6 +199,50 @@ def export_heightmap_exr(obj, filepath, res_x, res_y) -> bool:
 
 
 def export_heightmap_asc(obj, filepath, res_x, res_y) -> bool:
+    """
+    Exports a terrain heightmap in ESRI ASCII Grid (.asc) format.
+
+    This function samples elevation values from a 3D terrain mesh using
+    ray casting over a regular grid. The sampled heights are written to
+    an ASCII raster file, including a GIS-compatible header describing
+    spatial metadata.
+
+    Parameters
+    ----------
+    obj : bpy.types.Object
+        The terrain object from which elevation data is extracted.
+
+    filepath : str
+        Output path for the generated .asc file.
+
+    res_x : int
+        Number of columns (horizontal resolution) of the grid.
+
+    res_y : int
+        Number of rows (vertical resolution) of the grid.
+
+    Returns
+    -------
+    bool
+        True if the export is successful, False otherwise.
+
+    Raises
+    ------
+    None
+        File I/O errors are handled internally.
+
+    Notes
+    -----
+    - The function uses ray casting from above the terrain to sample heights.
+    - The evaluated mesh (with modifiers applied) is used.
+    - The output follows the ESRI ASCII Grid specification:
+        * ncols, nrows
+        * xllcorner, yllcorner
+        * cellsize
+        * NODATA_value
+    - Grid data is written from top row to bottom row, as required by the format.
+    - Missing values are filled with -9999.
+    """
 
     if not obj:
         print("Error: Object not found!")
@@ -269,6 +313,47 @@ def export_heightmap_asc(obj, filepath, res_x, res_y) -> bool:
 
 
 def export_hillshade(obj, filepath, res_x, res_y):
+    """
+    Generates and renders a hillshade visualization of a terrain.
+
+    This function configures the Blender scene to simulate a GIS-style
+    hillshade rendering by adjusting lighting, materials, camera, and
+    ambient occlusion settings. The terrain is rendered using an orthographic
+    projection to produce a top-down shaded relief image.
+
+    Parameters
+    ----------
+    obj : bpy.types.Object
+        The terrain object to be rendered.
+
+    filepath : str
+        Output path for the rendered hillshade image.
+
+    res_x : int
+        Horizontal resolution of the output image.
+
+    res_y : int
+        Vertical resolution of the output image.
+
+    Returns
+    -------
+    bool
+        True if the rendering completes successfully, False otherwise.
+
+    Raises
+    ------
+    None
+        Errors are handled internally and reported via print statements.
+
+    Notes
+    -----
+    - Uses an orthographic camera positioned above the terrain.
+    - Applies a neutral material override to enhance shading visibility.
+    - Configures a directional light (SUN) to simulate illumination angle.
+    - Adjusts Ambient Occlusion parameters to improve terrain detail perception.
+    - The rendering is performed using Blender's rendering engine.
+    - The camera is automatically scaled to fully cover the terrain bounding box.
+    """
 
     if not obj:
         print("Errore: Oggetto non trovato!")
@@ -299,6 +384,8 @@ def export_hillshade(obj, filepath, res_x, res_y):
     if sun_obj:
         sun_obj.rotation_euler = (math.radians(45), 0, math.radians(135))
         sun_obj.data.energy = 3.0
+
+        sun_obj.location = (0, 0, SUN_Z_LOCATION)
     else:
         print("ATTENTION: No light in the scene.")
     
@@ -335,15 +422,22 @@ def export_hillshade(obj, filepath, res_x, res_y):
     size_x = (max_x - min_x) * 2
     size_y = (max_y - min_y) * 2
 
+    mod = obj.modifiers.get("GeometryNodes")
+    landscape_size = mod["Socket_2"] if mod and "Socket_2" in mod else 10.0
+
     cam = bpy.context.scene.camera
     if cam:
         cam.data.type = 'ORTHO'
-        cam.data.ortho_scale = max(size_x, size_y)
+        cam.data.clip_end = CAM_CLIP_END
+        #cam.data.ortho_scale = max(size_x, size_y)
+        cam.data.ortho_scale = landscape_size
        
         center_x = (min_x + max_x) / 2
         center_y = (min_y + max_y) / 2
         cam.location = (center_x, center_y, 100)
         cam.rotation_euler = (0, 0, 0)
+        #cam.location = (0, 0, 1000) 
+        #cam.rotation_euler = (0, 0, 0)
     else:
         print("ATTENTION: No active camera in the scene.")
 
