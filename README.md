@@ -70,7 +70,6 @@ project/
 │
 ├── landscape_renders/                  # Renders Image sample
 │
-│
 ├── data/                    # Generated data
 │   ├── heightmaps/
 │   ├── meshes/
