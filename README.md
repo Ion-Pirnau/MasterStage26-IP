@@ -68,7 +68,7 @@ project/
 │   ├── test_main.py        # python script per test, usato per testare metodo di costruzione mesh triangolare da ASC a OFF
 │   └── README.md
 │
-├── landscape_render/                  # Renders Image sample
+├── landscape_renders/                  # Renders Image sample
 │
 │
 ├── data/                    # Generated data
