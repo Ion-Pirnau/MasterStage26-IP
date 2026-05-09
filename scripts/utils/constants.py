@@ -54,7 +54,14 @@ NODE_MAP = {
 CAMERA_ORTHO_ON_TOP = "cameraOnTop"
 CAMERA_ON_SIDE = "cameraOnSide"
 
+# OTHER CONSTANTS
 LANDSCAPE_NODE_MODIFIER = "Socket_2"
+TIFF_FOLDER = "tiff_to_convert"
+MESH_FOLDER = "meshes"
+OUTPUT_TIFF_OFF_CONVERT_NAME = "convert_tiff_off_"
+TIFF_EXTENSION = "tif"
+OFF_EXTENSION = "off"
+OBJ_EXTENSION = "obj"
 
 
 # FOR RENDERING CONSTANTS

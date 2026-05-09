@@ -64,8 +64,9 @@ project/
 ├── scripts/                 # Python scripts
 │   ├── generator/
 │   ├── utils/
-│   ├── main.py
-│   ├── test_main.py        # python script per test, usato per testare metodo di costruzione mesh triangolare da ASC a OFF
+│   ├── main.py             # python script - for rendering pipeline
+│   ├── main_convert_tiff_obj.py             # python script - for reading GeoTIFF and create a triangular mesh from regular grid
+│   ├── test_main.py        # python script for test
 │   └── README.md
 │
 ├── landscape_renders/                  # Renders Image sample directly from BLENDER FILE
