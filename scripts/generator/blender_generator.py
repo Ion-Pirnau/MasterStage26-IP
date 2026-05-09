@@ -375,17 +375,26 @@ def export_hillshade(obj, filepath, res_x, res_y):
         bsdf.inputs['Base Color'].default_value = (0.5, 0.5, 0.5, 1.0)
         bsdf.inputs['Roughness'].default_value = 1.0
         bsdf.inputs['Specular IOR Level'].default_value = 0.0
+        print("Material Hillshade creato")
     
-    bpy.context.view_layer.material_override = bpy.data.materials[mat_name]
+
+    gn_mod = obj.modifiers.get(MODIFIERS_NAME_GM)
+
+    if gn_mod and mat:
+        for node in gn_mod.node_group.nodes:
+            if node.type == 'SET_MATERIAL':
+                node.inputs['Material'].default_value = mat
+                print(f"Nodo '{node.name}' aggiornato a {mat.name}") 
+            
+    #bpy.context.view_layer.material_override = bpy.data.materials[mat_name]
 
     obj.cycles.shadow_terminator_shading_offset = 0.1
 
     sun_obj = next((light for light in bpy.context.scene.objects if light.type == 'LIGHT' and light.data.type == 'SUN'), None)
     if sun_obj:
-        sun_obj.rotation_euler = (math.radians(45), 0, math.radians(135))
-        sun_obj.data.energy = 3.0
-
-        sun_obj.location = (0, 0, SUN_Z_LOCATION)
+        #sun_obj.rotation_euler = (math.radians(45), 0, math.radians(135))
+        sun_obj.data.energy = 1.25
+        #sun_obj.location = (0, 0, SUN_Z_LOCATION)
     else:
         print("ATTENTION: No light in the scene.")
     
@@ -412,12 +421,12 @@ def export_hillshade(obj, filepath, res_x, res_y):
 
     cam = bpy.context.scene.camera
     if cam:
-        cam.data.type = 'ORTHO'
-        cam.data.clip_end = CAM_CLIP_END
+        #cam.data.type = 'ORTHO'
+        #cam.data.clip_end = CAM_CLIP_END
         cam.data.ortho_scale = landscape_size
 
-        cam.location = (0, 0, 1000) 
-        cam.rotation_euler = (0, 0, 0)
+        #cam.location = (0, 0, 1000) 
+        #cam.rotation_euler = (0, 0, 0)
     else:
         print("ATTENTION: No active camera in the scene.")
 
@@ -470,7 +479,9 @@ def generate_terrain():
     settings = config["dataset_settings"]
     params = config["node_parameters"]
 
-    res_xy = params["Vertices Count"]["value"]
+    camera_type_active = settings["camera_ortho_active"]
+
+    res_xy = params["Resolution"]["value"]
 
     terrain_obj = bpy.data.objects.get(TERRAIN_NAME)
     mod = terrain_obj.modifiers.get(MODIFIERS_NAME_GM)
@@ -484,6 +495,13 @@ def generate_terrain():
     num_to_generate = settings["num_terrains_to_generate"] if mode == GENERATION_MODE_RANDOM else 1
 
     print(f"Mode: {mode}. Generation of {num_to_generate} terrains...")
+
+    if camera_type_active:
+        bpy.context.scene.camera = bpy.data.objects.get(CAMERA_ORTHO_ON_TOP)
+        print("Camera ORTHO: activated")
+    else:
+        bpy.context.scene.camera = bpy.data.objects.get(CAMERA_ON_SIDE)
+        print("Camera PERSPECTIVE: activated")
 
     for i in range(num_to_generate):
         print(f"\n--- Generation {i+1}/{num_to_generate} ---")

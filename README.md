@@ -52,12 +52,12 @@ L'obiettivo è creare una pipeline completa che parta dalla modellazione procedu
 
 ```text
 project/
-├── README.md
+│
 ├── requirements.txt
 ├── .gitignore
 │
 ├── terrain_generator/                  # Blender terrain generator
-│   ├── test_terrain_generator.blend
+│   ├── terrain_generator_mountains_plains_v1.blend
 │   ├── dataset_setting.json            # Set configuration
 │   └── README.md
 │
@@ -68,12 +68,11 @@ project/
 │   ├── test_main.py        # python script per test, usato per testare metodo di costruzione mesh triangolare da ASC a OFF
 │   └── README.md
 │
-├── landscape_renders/                  # Renders Image sample
+├── landscape_renders/                  # Renders Image sample directly from BLENDER FILE
 │
 ├── data/                    # Generated data
 │   ├── heightmaps/
 │   ├── meshes/
 │   └── renders/
 │
-├──
-└──
+└── README.md
