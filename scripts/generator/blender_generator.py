@@ -79,8 +79,8 @@ def set_modifier_value(modifier, identifier, value):
 
 
     blender_key = NODE_MAP.get(identifier)
-    print(blender_key)
     if blender_key in modifier.keys():
+        #print(blender_key)
         modifier[blender_key] = value
     else:
         print(f"Attention: Input '{identifier}' not found in Geometry Nodes!")
@@ -434,8 +434,71 @@ def export_hillshade(obj, filepath, res_x, res_y):
     bpy.ops.render.render(write_still=True)
     print(f"Render Hillshade saved in {filepath}")
     bpy.context.view_layer.material_override = None
+
+    return True
+
+
+def export_maps_via_render(obj, filepath_heightmap, filepath_splatmap, res_x, res_y, material_socket_id, isSplatActive=False):
+    """
+    Esporta sia la Heightmap (EXR) che la Splatmap (PNG) usando la Camera Ortografica.
+    Utilizza l'interruttore booleano dei Geometry Nodes per cambiare materiale.
+    """
+    
+    if not obj:
+        print("Errore: Oggetto terreno non trovato!")
+        return False
+        
+    scene = bpy.context.scene
+    scene.render.resolution_x = res_x
+    scene.render.resolution_y = res_y
+    scene.render.resolution_percentage = 100
+    
+    scene.view_settings.view_transform = 'Standard'
+    
+    if not scene.camera:
+        print("Errore: Nessuna camera attiva trovata nella scena!")
+        return False
+
+    mod = obj.modifiers.get("GeometryNodes")
+    if not mod:
+        print("Errore: Modificatore Geometry Nodes non trovato!")
+        return False
+
+    # ==========================================
+    # FASE 1: RENDER HEIGHTMAP (Scala di Grigi)
+    # ==========================================
+    print("Generazione Heightmap in corso...")
+    
+    # Imposta lo switch del materiale su False (Heightmap)
+    mod[material_socket_id] = False 
+    
+    scene.render.image_settings.file_format = 'OPEN_EXR'
+    print(filepath_heightmap)
+    scene.render.filepath = filepath_heightmap
+    
+    bpy.ops.render.render(write_still=True)
+    print(f"Heightmap salvata in: {filepath_heightmap}")
+
+
+    # ==========================================
+    # FASE 2: RENDER SPLATMAP (Colori Maschere RGB)
+    # ==========================================
+
+    if isSplatActive:
+        print("Generazione Splatmap in corso...")
+        
+        mod[material_socket_id] = True 
+        
+        scene.render.image_settings.file_format = 'PNG'
+        scene.render.image_settings.color_depth = '8'
+        scene.render.image_settings.color_mode = 'RGB'
+        scene.render.filepath = filepath_splatmap
+        
+        bpy.ops.render.render(write_still=True)
+        print(f"Splatmap salvata in: {filepath_splatmap}")
     
     return True
+
 
 def generate_terrain():
     """
@@ -481,7 +544,8 @@ def generate_terrain():
 
     camera_type_active = settings["camera_ortho_active"]
 
-    res_xy = params["Resolution"]["value"]
+    #res_xy = params["Risoluzione"]["value"]
+    res_xy = RESOLUTION_XY
 
     terrain_obj = bpy.data.objects.get(TERRAIN_NAME)
     mod = terrain_obj.modifiers.get(MODIFIERS_NAME_GM)
@@ -491,7 +555,7 @@ def generate_terrain():
         print(f"Intern Key is: '{key}' (Actual value: {value})")
     print("-------------------------------------------\n")
 
-    mode = settings.get("generate_mode", "fixed")
+    mode = settings.get("generation_mode", "fixed")
     num_to_generate = settings["num_terrains_to_generate"] if mode == GENERATION_MODE_RANDOM else 1
 
     print(f"Mode: {mode}. Generation of {num_to_generate} terrains...")
@@ -515,7 +579,6 @@ def generate_terrain():
                     val = random.randint(int(param_data["min"]), int(param_data["max"]))
                 else:
                     val = random.uniform(param_data["min"], param_data["max"])
-            
             set_modifier_value(mod, param_name, val)
             print(f"Set {param_name} = {val}")
 
@@ -540,6 +603,15 @@ def generate_terrain():
             obj_to_off(obj_path, off_path)
 
             print(f"Mesh OFF salvata in {off_path}")
+
+        if settings["export_heightmap_exr_with_splat"]:
+            export_maps_via_render(terrain_obj,
+                                   get_full_path(settings["output_folder_heightmap_exr"], f"{NAME_HEIGHTMAPS}{i:04d}.{EXTENSION_HEIGHTMAP_EXR}"),
+                                   get_full_path(settings["output_folder_splatmap_png"], f"{NAME_GENERATED_TERRAIN}{i:04d}.{EXTENSION_RENDERING}"),
+                                   res_x=res_xy,
+                                   res_y=res_xy,
+                                   material_socket_id=NODE_MAP.get("Attiva Tipo Materiale"),
+                                   isSplatActive=settings["isSplatActive"])
 
         if settings["export_heightmap_exr"]:
             export_heightmap_exr(terrain_obj, 

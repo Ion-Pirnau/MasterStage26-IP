@@ -1,176 +1,198 @@
 {
     "dataset_settings": {
-        "generation_mode": "fixed",
+        "generation_mode": "random",
         "camera_ortho_active": true,
-        "num_terrains_to_generate": 2,
+        "num_terrains_to_generate": 50,
         "output_folder_renders": "data/renders",
         "output_folder_meshes": "data/meshes",
         "output_folder_maps": "data/heightmaps",
+        "output_folder_heightmap_exr": "data/heightmaps/heightmap_exr",
+        "output_folder_splatmap_png": "data/heightmaps/splatmap_png",
         "export_render_png": false,
         "export_mesh_off": false,
+        "export_heightmap_exr_with_splat": true,
+        "isSplatActive": false,
         "export_heightmap_exr": false,
         "export_heightmap_asc": false,
-        "export_hillshade": true
+        "export_hillshade": false
     },
 
     "node_parameters": {
-        "HeightmapIsolinee": {
-            "type": "boolean",
-            "value": true,
-            "probability": 0.5
-        },
-        "Factor mix Texture": {
+        "Dimensione Griglia": {
             "type": "float",
-            "value": 1.0,
-            "min": 0.0,
-            "max": 1.0
-        },
-        "Grid_Size": {
-            "type": "float",
-            "value": 1.0,
-            "min": 0.1,
+            "value": 10.0,
+            "min": 10.0,
             "max": 10.0
         },
-        "Resolution": {
+        "Risoluzione XY": {
             "type": "int",
             "value": 512,
-            "min": 16,
-            "max": 2048
+            "min": 512,
+            "max": 512
         },
-        "Noise W Factor": {
-            "type": "float",
-            "value": 14.74,
-            "min": -1000.0,
-            "max": 1000.0
+        "Risoluzione": {
+            "type": "int",
+            "value": 0,
+            "min": 0,
+            "max": 0
         },
-        "Noise Scale": {
+        "Scale_Noise_One": {
             "type": "float",
-            "value": 2.02,
-            "min": -1000.0,
-            "max": 1000.0
-        },
-        "Noise Detail": {
-            "type": "float",
-            "value": 15.0,
-            "min": 0.0,
-            "max": 15.0
-        },
-        "Noise Roughness": {
-            "type": "float",
-            "value": 0.5,
-            "min": 0.0,
+            "value": 0.210,
+            "min": 0.210,
             "max": 1.0
         },
-        "Noise Lacunarity": {
+        "Scale_Noise_Two": {
             "type": "float",
-            "value": 2.05,
-            "min": 0.0,
-            "max": 5.0
+            "value": 0.110,
+            "min": 0.110,
+            "max": 0.9
+
         },
-        "Noise Distortion": {
-            "type": "float",
-            "value": 0.26,
-            "min": 0.0,
-            "max": 5.0
-        },
-        "Noise Magnitude": {
-            "type": "float",
-            "value": 0.055,
-            "min": 0.0,
-            "max": 2.0
-        },
-        "Magnitude Z Offset": {
-            "type": "float",
-            "value": 0.0,
-            "min": -5.0,
-            "max": 5.0
-        },
-        "Crater On": {
+        "Attiva Tipo Materiale": {
             "type": "boolean",
             "value": false,
             "probability": 0.5
         },
-        "Noise W Crater": {
-            "type": "float",
-            "value": 31.78,
-            "min": 0.0,
-            "max": 100.0
-        },
-        "Scale Crater": {
-            "type": "float",
-            "value": 21.04,
-            "min": 0.0,
-            "max": 100.0
-        },
-        "Radius Influence": {
-            "type": "float",
-            "value": 0.09,
-            "min": 0.0,
-            "max": 1.0
-        },
-        "From Max": {
-            "type": "float",
-            "value": 0.3,
-            "min": 0.0,
-            "max": 1.0
-        },
-        "To Max 1": {
-            "type": "float",
-            "value": 1.0,
-            "min": 0.0,
-            "max": 1.0
-        },
-        "Erosion On": {
+        "Attiva Erosione": {
             "type": "boolean",
             "value": true,
             "probability": 0.5
         },
-        "Erosion Scale": {
+        "Noise Scale Erosione": {
             "type": "float",
-            "value": 25.0,
+            "value": 2.5,
+            "min": 0.1,
+            "max": 2.5
+        },
+        "Profondita Erosione": {
+            "type": "float",
+            "value": 0.1,
+            "min": 0.1,
+            "max": 0.2
+        },
+        "Attiva Crateri": {
+            "type": "boolean",
+            "value": true,
+            "probability": 0.8
+        },
+        "Seed Crateri": {
+            "type": "int",
+            "value": 0,
+            "min": 0,
+            "max": 250
+        },
+        "Distance Min": {
+            "type": "float",
+            "value": 4.0,
+            "min": 3.0,
+            "max": 8.0
+        },
+        "Density Max": {
+            "type": "float",
+            "value": 0.005,
+            "min": 0.005,
+            "max": 1.5
+        },
+        "Vulcani_Altezza": {
+            "type": "float",
+            "value": 0.97,
+            "min": 0.1,
+            "max": 2.0
+        },
+        "Vulcani_Raggio_Interno": {
+            "type": "float",
+            "value": 0.28,
+            "min": 0,
+            "max": 0.9
+        },
+        "Vulcani_Raggio_Esterno": {
+            "type": "float",
+            "value": 0.92,
+            "min": 0,
+            "max": 1.0
+        },
+        "Attiva Montagna": {
+            "type": "boolean",
+            "value": true,
+            "probability": 0.6
+        },
+        "Seed Montagna": {
+            "type": "int",
+            "value": 0,
+            "min": 0,
+            "max": 250
+        },
+        "Scale": {
+            "type": "float",
+            "value": 0.2,
+            "min": 0.1,
+            "max": 1.0
+        },
+        "Detail": {
+            "type": "float",
+            "value": 15.0,
+            "min": 15.0,
+            "max": 15.0
+        },
+        "Campo di Forza": {
+            "type": "float",
+            "value": 95.0,
             "min": 0.0,
             "max": 100.0
         },
-        "From Min Threshold": {
+        "Altezza Max Montagna": {
             "type": "float",
-            "value": 0.0,
-            "min": -1.0,
-            "max": 1.0
+            "value": 50.0,
+            "min": 10.0,
+            "max": 55.0
         },
-        "From Max Threshold": {
+        "Ripidita Montagna": {
             "type": "float",
-            "value": 0.02,
-            "min": 0.0,
-            "max": 1.0
+            "value": 100.0,
+            "min": 20.0,
+            "max": 200.0
         },
-        "To Min": {
+        "Larghezza Montagna": {
             "type": "float",
-            "value": 1.0,
-            "min": 0.0,
-            "max": 1.0
+            "value": 2.0,
+            "min": 1.0,
+            "max": 6.0
         },
-        "To Max 2": {
-            "type": "float",
-            "value": 0.0,
-            "min": 0.0,
-            "max": 1.0
-        },
-        "Erosion Depth": {
-            "type": "float",
-            "value": -0.3,
-            "min": -2.0,
-            "max": 2.0
-        },
-        "Sediment On": {
+        "Attiva Fan": {
             "type": "boolean",
-            "value": false,
-            "probability": 0.5
+            "value": true,
+            "probability": 0.9
         },
-        "Sediment Height": {
+        "Length": {
             "type": "float",
-            "value": 1.0,
+            "value": 2.5,
+            "min": 0,
+            "max": 3.0
+        },
+        "Angle": {
+            "type": "float",
+            "value": 45.0,
+            "min": 10,
+            "max": 100.0
+        },
+        "Height": {
+            "type": "float",
+            "value": 0.25,
             "min": 0.0,
-            "max": 5.0
+            "max": 0.3
+        },
+        "Edge Noise Scale": {
+            "type": "float",
+            "value": 0.6,
+            "min": 0.1,
+            "max": 1.0
+        },
+        "Edge Roughness": {
+            "type": "float",
+            "value": 0.8,
+            "min": 0.1,
+            "max": 1.0
         }
     }
 }

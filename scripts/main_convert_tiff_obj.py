@@ -1,4 +1,5 @@
-from utils.utils_method import geotiff_to_off, geotiff_to_obj, get_full_path
+from utils.utils_method import get_full_path
+from utils.other_utilities import geotiff_to_obj
 from utils.constants import TIFF_FOLDER, TIFF_EXTENSION, OUTPUT_TIFF_OFF_CONVERT_NAME, OBJ_EXTENSION, MESH_FOLDER
 
 def define_complete_name(input_name, output_name):

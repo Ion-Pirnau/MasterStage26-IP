@@ -4,9 +4,11 @@ from utils.utils_method import get_full_path
 BLENDER_EXECUTABLE = "C:\\Program Files\\Blender Foundation\\Blender 4.2\\blender.exe"
 
 # PATH CONSTANTS
-BLEND_FILE = get_full_path("terrain_generator", "terrain_generator_mountains_plains_v1.blend")
+BLEND_FILE = get_full_path("terrain_generator", "terreno_procedurale_tesi_features.blend")
 BLENDER_SCRIPT = get_full_path("scripts", "generator", "blender_generator.py")
 CONFIG_FILE = get_full_path("terrain_generator", "dataset_setting.json")
+HEIGHTMAPS_EXR_LOCATION = get_full_path("data", "heightmaps", "heightmap_exr")
+HEIGHTMAPS_PNG_LOCATION = get_full_path("data", "heightmaps", "heightmap_png")
 
 # CONSTANTS VAR FOR IDENTIFYING ELEMENTS IN BLENDER WORLD
 TERRAIN_NAME = "Cube"
@@ -18,33 +20,36 @@ GENERATION_MODE_FIXED = "fixed"
 
 # CONSTANT MAP, MAPPING THE SOCKET NAME OF GROUP INPUT TO THE CUSTOM NAME FOR UX
 NODE_MAP = {
-    "HeightmapIsolinee": "Socket_29",
-    "Factor mix Texture": "Socket_30",
-    "Grid_Size": "Socket_2",
-    "Resolution": "Socket_3",
-    "Noise W Factor": "Socket_4",
-    "Noise Scale": "Socket_5",
-    "Noise Detail": "Socket_6",
-    "Noise Roughness": "Socket_7",
-    "Noise Lacunarity": "Socket_8",
-    "Noise Distortion": "Socket_9",
-    "Noise Magnitude": "Socket_10",
-    "Magnitude Z Offset": "Socket_11",
-    "Crater On": "Socket_17",
-    "Noise W Crater": "Socket_12",
-    "Scale Crater": "Socket_13",
-    "Radius Influence": "Socket_14",
-    "From Max": "Socket_15",
-    "To Max 1": "Socket_16",
-    "Erosion On": "Socket_24",
-    "Erosion Scale": "Socket_18",
-    "From Min Threshold": "Socket_21",
-    "From Max Threshold": "Socket_19",
-    "To Min": "Socket_20",
-    "To Max 2": "Socket_22",
-    "Erosion Depth": "Socket_23",
-    "Sediment On": "Socket_25",
-    "Sediment Height": "Socket_26"
+    "Dimensione Griglia": "Socket_2",
+    "Risoluzione XY": "Socket_3",
+    "Risoluzione": "Socket_16",
+    "Scale_Noise_One": "Socket_23",
+    "Scale_Noise_Two": "Socket_24",
+    "Attiva Tipo Materiale": "Socket_34",
+    "Attiva Erosione": "Socket_30",
+    "Noise Scale Erosione": "Socket_31",
+    "Profondita Erosione": "Socket_32",
+    "Attiva Crateri": "Socket_14",
+    "Seed Crateri": "Socket_22",
+    "Distance Min": "Socket_5",
+    "Density Max": "Socket_6",
+    "Vulcani_Altezza": "Socket_8",
+    "Vulcani_Raggio_Interno": "Socket_7",
+    "Vulcani_Raggio_Esterno": "Socket_9",
+    "Attiva Montagna": "Socket_15",
+    "Seed Montagna": "Socket_11",
+    "Scale": "Socket_12",
+    "Detail": "Socket_13",
+    "Campo di Forza": "Socket_17",
+    "Altezza Max Montagna": "Socket_18",
+    "Ripidita Montagna": "Socket_19",
+    "Larghezza Montagna": "Socket_20",
+    "Attiva Fan": "Socket_21",
+    "Length": "Socket_25",
+    "Angle": "Socket_26",
+    "Height": "Socket_27",
+    "Edge Noise Scale": "Socket_28",
+    "Edge Roughness": "Socket_29",
 }
 
 #CAM_CLIP_END = 50000.0
@@ -69,9 +74,10 @@ NAME_GENERATED_TERRAIN = "newterrain_"
 EXTENSION_RENDERING = "png"
 INBLEND_IMAGE_NAME = "Heightmap_Export"
 FILE_FORMAT_IMG = "OPEN_EXR"
-NAME_HEIGHTMAPS = "heightmap_"
+NAME_HEIGHTMAPS = "heightmap0_"
 NAME_HILLSHADE = "hillshade_"
 EXTENSION_HEIGHTMAP_EXR = "exr"
 EXTENSION_HEIGHTMAP_ASC = "asc"
 EXTENSION_HILLSHADE = "PNG"
 COLOR_MODE_HILLSHADE = "BW"
+RESOLUTION_XY = 2048
