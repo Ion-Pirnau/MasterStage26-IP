@@ -16,7 +16,7 @@ Questo documento descrive la struttura e i parametri del file `settings.json`. I
 Questo file è stato progettato per essere flessibile:
 
 *   **Automazione Python:** Utilizzando lo script dedicato, è possibile processare il file JSON per generare dataset di terreni (mesh, render e mappe).
-*   **Test in Blender:** In alternativa, è possibile utilizzare il file `terrain_generator_mountains_plains_v1.blend` per effettuare test visivi immediati, regolare i nodi e validare i parametri prima di lanciare la generazione massiva.
+*   **Test in Blender:** In alternativa, è possibile utilizzare il file `terreno_procedurale_tesi_features.blend` per effettuare test visivi immediati, regolare i nodi e validare i parametri prima di lanciare la generazione massiva.
 
 ---
 
@@ -33,6 +33,8 @@ Controlla il comportamento globale della pipeline e le opzioni di esportazione.
 | `output_folder_...` | Cartelle di destinazione per Render, Mesh e Mappe. |
 | `export_render_png` | Se `true`, salva il rendering visivo della scena. |
 | `export_mesh_off` | Esporta la geometria in formato .off. |
+| `export_heightmap_exr_with_splat` | Salva la mappa in formato exr con la relativa immagine di Splat (se attiva). |
+| `isSplatActive` | se attiva, salva un'immagine splat. |
 | `export_heightmap_exr` | Salva la mappa delle altezze in 32-bit. |
 | `export_heightmap_asc` | Esporta i dati altimetrici in formato testo ASCII Grid. |
 | `export_hillshade` | Genera una mappa d'ombra del rilievo (Hillshade). |
@@ -41,8 +43,8 @@ Controlla il comportamento globale della pipeline e le opzioni di esportazione.
 Parametri tecnici per la modellazione procedurale del terreno.
 
 #### Configurazione Mesh
-*   **Grid_Size**: Dimensione (scala) del terreno nel mondo 3D di Blender.
-*   **Resolution**: Risoluzione della mesh. Valori più alti aumentano il dettaglio ma richiedono più memoria.
+*   **Dimensione Griglia**: Dimensione (scala) del terreno nel mondo 3D di Blender.
+*   **Risoluzione**: Risoluzione della mesh. Valori più alti aumentano il dettaglio ma richiedono più memoria.
 
 
 #### DA AGGIORNARE
@@ -61,7 +63,7 @@ This document describes the structure and parameters of the `settings.json` file
 This pipeline is designed to be flexible:
 
 *   **Python Automation:** Using the dedicated script, you can process the JSON file to generate massive terrain datasets (meshes, renders, and maps).
-*   **Blender Testing:** Alternatively, you can use the `terrain_generator_mountains_plains_v1.blend` file for immediate visual feedback, adjusting nodes and validating parameters before starting batch generation.
+*   **Blender Testing:** Alternatively, you can use the `terreno_procedurale_tesi_features.blend` file for immediate visual feedback, adjusting nodes and validating parameters before starting batch generation.
 
 ---
 
@@ -78,6 +80,8 @@ Controls the global behavior of the pipeline and export options.
 | `output_folder_...` | Target folders for Renders, Meshes, and Maps. |
 | `export_render_png` | If `true`, saves the visual render of the scene. |
 | `export_mesh_off` | Exports geometry in .off format. |
+| `export_heightmap_exr_with_splat` | Saves the heightmap in EXR format along with its corresponding splat map (if active). |
+| `isSplatActive` | If active, saves a splat map image. |
 | `export_heightmap_exr` | Saves the heightmap in 32-bit format. |
 | `export_heightmap_asc` | Exports elevation data in ASCII Grid text format. |
 | `export_hillshade` | Generates a relief shadow map (Hillshade). |
@@ -86,8 +90,8 @@ Controls the global behavior of the pipeline and export options.
 Technical parameters for procedural terrain modeling.
 
 #### Mesh Configuration
-*   **Grid_Size**: Dimension (scale) of the terrain in the Blender 3D world.
-*   **Resolution**: Mesh resolution. Higher values increase detail but require more memory.
+*   **Dimensione Griglia**: Dimension (scale) of the terrain in the Blender 3D world.
+*   **Risoluzione**: Mesh resolution. Higher values increase detail but require more memory.
 
 
 #### TO UPDATE

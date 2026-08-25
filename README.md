@@ -57,7 +57,7 @@ project/
 ├── .gitignore
 │
 ├── terrain_generator/                  # Blender terrain generator
-│   ├── terrain_generator_mountains_plains_v1.blend
+│   ├── terreno_procedurale_tesi_features.blend
 │   ├── dataset_setting.json            # Set configuration
 │   └── README.md
 │
@@ -65,6 +65,7 @@ project/
 │   ├── generator/
 │   ├── utils/
 │   ├── main.py             # python script - for rendering pipeline
+│   ├── main_convert_exr_png.py             # python script - for reading EXR and convert to PNG
 │   ├── main_convert_tiff_obj.py             # python script - for reading GeoTIFF and create a triangular mesh from regular grid
 │   ├── test_main.py        # python script for test
 │   └── README.md
@@ -74,6 +75,7 @@ project/
 ├── data/                    # Generated data
 │   ├── heightmaps/
 │   ├── meshes/
+│   ├── tiff_to_convert/
 │   └── renders/
 │
 └── README.md

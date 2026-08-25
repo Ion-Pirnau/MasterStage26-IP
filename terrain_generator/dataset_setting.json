@@ -143,9 +143,9 @@
         },
         "Altezza Max Montagna": {
             "type": "float",
-            "value": 50.0,
+            "value": 28.0,
             "min": 10.0,
-            "max": 55.0
+            "max": 28.0
         },
         "Ripidita Montagna": {
             "type": "float",
