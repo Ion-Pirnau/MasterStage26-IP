@@ -84,4 +84,7 @@ RESOLUTION_XY = 2048
 
 
 # FOR STABLE DIFFUSION MODEL XL
-PATH_FOLDER_SDXL = "data/render/sdxl_img"
+PATH_FOLDER_SDXL = "data/renders/sdxl_img"
+PATH_DATASET_GENERATED = "data/heightmaps/heightmap_png"
+PATH_MODEL_WEIGHTS= "data/sdxl_model/weights"
+PATH_MODEL_SINGLE_EPOCH_WEIGHTS= "data/sdxl_model/weights_epoch"

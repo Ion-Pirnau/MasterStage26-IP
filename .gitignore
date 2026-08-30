@@ -4,3 +4,4 @@ __pycache__/
 .vscode
 data/heightmaps/heightmap_exr
 data/heightmaps/heightmap_png
+data/sdxl_model
