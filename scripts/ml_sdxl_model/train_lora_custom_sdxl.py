@@ -49,7 +49,7 @@ def train_lora_custom():
     batch_size = 1
     gradient_accumulation_steps = 1
     learning_rate = 1e-4
-    num_epochs = 7
+    num_epochs = 10
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     os.makedirs(get_full_path(output_dir_model), exist_ok=True)
@@ -89,6 +89,27 @@ def train_lora_custom():
     unet = get_peft_model(unet, lora_config)
     unet.print_trainable_parameters()
 
+    initial_lora = {}
+
+    for name, param in unet.named_parameters():
+        if param.requires_grad and "lora_" in name:
+            initial_lora[name] = param.detach().float().cpu().clone()
+
+    print("\n===== PEFT CHECK =====")
+    trainable_params = [
+        (name, p)
+        for name, p in unet.named_parameters()
+        if p.requires_grad
+    ]
+
+    print(f"Trainable tensors: {len(trainable_params)}")
+
+    for name, p in trainable_params[:10]:
+        print(
+            f"{name} | shape={tuple(p.shape)} | dtype={p.dtype}"
+        )
+    print("\n===== END PEFT CHECK =====")
+
     #optimizer = torch.optim.AdamW(unet.parameters(), lr=learning_rate, weight_decay=1e-2)
     trainable_parameters = [p for p in unet.parameters() if p.requires_grad]
     optimizer = bnb.optim.AdamW8bit(trainable_parameters, lr=learning_rate, weight_decay=1e-2)
@@ -106,7 +127,7 @@ def train_lora_custom():
 
     print("Pre-calculation of text's embedding...")
     with torch.no_grad():
-        dummy_text = [""] 
+        dummy_text = [""]
         txt_in_1 = tokenizer_1(dummy_text, padding="max_length", max_length=77, truncation=True, return_tensors="pt").to(device)
         txt_in_2 = tokenizer_2(dummy_text, padding="max_length", max_length=77, truncation=True, return_tensors="pt").to(device)
         
@@ -152,13 +173,13 @@ def train_lora_custom():
 
 
             if torch.isnan(latents).any():
-                print("🚨 IL COLPETEVOLE È IL VAE: I latenti generati contengono NaN!")
+                print("IL COLPETEVOLE È IL VAE: I latenti generati contengono NaN!")
             if torch.isnan(prompt_embeds).any():
-                print("🚨 IL COLPETEVOLE SONO I TEXT ENCODERS: Gli embedding del testo contengono NaN!")
+                print("IL COLPETEVOLE SONO I TEXT ENCODERS: Gli embedding del testo contengono NaN!")
             if torch.isnan(noise).any():
-                print("🚨 IL COLPETEVOLE È IL GENERATORE DI RUMORE (noise)!")
+                print("IL COLPETEVOLE È IL GENERATORE DI RUMORE (noise)!")
             if torch.isnan(noisy_latents).any():
-                print("🚨 IL COLPETEVOLE È IL NOISE SCHEDULER: Il rumore aggiunto ha generato NaN!")
+                print("IL COLPETEVOLE È IL NOISE SCHEDULER: Il rumore aggiunto ha generato NaN!")
 
 
             with torch.amp.autocast('cuda', dtype=torch.bfloat16):
@@ -170,11 +191,25 @@ def train_lora_custom():
                 ).sample
 
             loss = F.mse_loss(noise_pred.float(), noise.float(), reduction="mean")
-            #import math
-            #current_loss = loss.item() * gradient_accumulation_steps if not math.isnan(loss.item()) else 0.0
 
             loss = loss / gradient_accumulation_steps
             scaler.scale(loss).backward()
+
+            print("\n===== GRADIENT CHECK =====")
+
+            for name, param in unet.named_parameters():
+                if param.requires_grad and "lora_" in name:
+                    if param.grad is None:
+                        print(name, "-> GRADIENT = NONE")
+                    else:
+                        print(
+                            name,
+                            "-> GRADIENT MEAN =",
+                            param.grad.detach().float().abs().mean().item()
+                        )
+                    break
+
+            print("\n===== END GRADIENT CHECK =====")
 
             epoch_loss += loss.item() * gradient_accumulation_steps
 
@@ -203,23 +238,46 @@ def train_lora_custom():
                     "lr": f"{lr_scheduler.get_last_lr()[0]:.1e}"
                 })
 
+
+        print("\n===== LORA WEIGHT CHECK =====")
+
+        for name, param in unet.named_parameters():
+            if param.requires_grad and "lora_" in name:
+                print(
+                    name,
+                    "mean abs =",
+                    param.detach().float().abs().mean().item()
+                )
+                break
+        print("\n===== END LORA WEIGHT CHECK =====")
+
+
+        print("\n===== LORA UPDATE CHECK =====")
+
+        for name, param in unet.named_parameters():
+            if name in initial_lora:
+
+                diff = (
+                    param.detach().float().cpu() - initial_lora[name]
+                ).abs().mean().item()
+
+                print(f"{name} -> MEAN CHANGE = {diff:.10e}")
+        print("\n===== END LORA UPDATE CHECK =====")
+
+
         media_loss = epoch_loss / len(dataloader)
         print(f"-> End Epoch {epoch+1} - Average Loss: {media_loss:.6f}\n")
 
         print(f"Saving checkpoint Epoch {epoch+1}...")
-        nome_file_epoca = f"pytorch_lora_weights_epoch_{epoch+1}.safetensors"
-        output_lora_path_epoch = get_full_path(output_dir_weights_epoch, nome_file_epoca)
-        
-        lora_state_dict_epoch = get_peft_model_state_dict(unet)
-        torch.save(lora_state_dict_epoch, output_lora_path_epoch)
-        print(f"Checkpoint saved: {nome_file_epoca}\n")
+        cartella_epoca = get_full_path(output_dir_weights_epoch, f"epoch_{epoch+1}")
+        unet.save_pretrained(cartella_epoca)
+        print(f"Checkpoint saved: {cartella_epoca}\n")
         #print(f"Epoch {epoch+1}/{num_epochs} - Loss: {epoch_loss/len(dataloader):.4f}")
 
     print("Saving the final model...")
-    output_lora_path_final = get_full_path(output_dir_model, "pytorch_lora_weights_final.safetensors")
-    lora_state_dict_final = get_peft_model_state_dict(unet)
-    torch.save(lora_state_dict_final, output_lora_path_final)
-    print(f"Training completed! Final weights saved in: {output_lora_path_final}")
+    cartella_model_final = get_full_path(output_dir_model)
+    unet.save_pretrained(cartella_model_final)
+    print(f"Training completed! Final weights saved in: {cartella_model_final}")
 
 if __name__ == "__main__":
     train_lora_custom()

@@ -51,13 +51,20 @@ def generate_landscape():
         state_dict_peft = load_file(lora_path_new, device="cpu")
         state_dict_diffusers = {}
 
-        # 2. Correggi i nomi delle chiavi al volo per adattarli a Diffusers
         for key, value in state_dict_peft.items():
-            # Rimuovi il prefisso di PEFT
-            new_key = key.replace("base_model.model.", "")
-            # Aggiungi il prefisso unet. richiesto da Diffusers
-            if not new_key.startswith("unet.") and not new_key.startswith("text_encoder"):
+            new_key = key
+            
+            # A. Rimuovi il prefisso di PEFT
+            new_key = new_key.replace("base_model.model.", "")
+            
+            # B. TRADUZIONE CRITICA: converti le matrici A e B in down e up
+            new_key = new_key.replace("lora_A", "lora.down")
+            new_key = new_key.replace("lora_B", "lora.up")
+            
+            # C. Aggiungi il prefisso unet. richiesto da Diffusers
+            if not new_key.startswith("unet."):
                 new_key = "unet." + new_key
+                
             state_dict_diffusers[new_key] = value
 
         # 3. Passa il dizionario corretto invece del percorso del file
@@ -104,7 +111,7 @@ def generate_landscape():
 
 
 def convert_tensor():
-    lora_path_old = get_full_path(PATH_MODEL_SINGLE_EPOCH_WEIGHTS, "pytorch_lora_weights_epoch_4_test.pt")
+    lora_path_old = get_full_path(PATH_MODEL_SINGLE_EPOCH_WEIGHTS, "pytorch_lora_weights_epoch_7_test.pt")
     vero_file_safetensors = "pytorch_lora_weights_epoch_1_VERO.safetensors"
     lora_path_new = get_full_path(PATH_MODEL_SINGLE_EPOCH_WEIGHTS, vero_file_safetensors)
     
