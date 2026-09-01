@@ -18,17 +18,13 @@ from utils.constants import PATH_FOLDER_SDXL, PATH_DATASET_GENERATED, PATH_MODEL
 
 class TerrainDataset(Dataset):
 
-    image_path = None
-    transform = None
-    dummy_prompt = None
-
     def __init__(self, image_dir, size=1024):
         self.image_path = [os.path.join(image_dir, f) for f in os.listdir(image_dir) 
                            if f.endswith(('.png', '.jpg'))]
         self.transform = transforms.Compose([
             transforms.Resize((size, size), interpolation=transforms.InterpolationMode.BILINEAR),
             transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5])
+            transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
         ])
 
         self.dummy_prompt = ""
@@ -64,7 +60,7 @@ def train_lora_custom():
     )
 
     vae = pipe.vae.to(device, dtype=torch.float32)
-    unet = pipe.unet.to(device, dtype=torch.float8_e4m3fn)
+    unet = pipe.unet.to(device, dtype=torch.float16)
     text_encoder_1 = pipe.text_encoder.to(device)
     text_encoder_2 = pipe.text_encoder_2.to(device)
     tokenizer_1 = pipe.tokenizer
@@ -75,7 +71,6 @@ def train_lora_custom():
     text_encoder_1.requires_grad_(False)
     text_encoder_2.requires_grad_(False)
     unet.requires_grad_(False)
-
 
     unet.enable_gradient_checkpointing()
 
@@ -114,8 +109,9 @@ def train_lora_custom():
     trainable_parameters = [p for p in unet.parameters() if p.requires_grad]
     optimizer = bnb.optim.AdamW8bit(trainable_parameters, lr=learning_rate, weight_decay=1e-2)
     scaler = torch.amp.GradScaler('cuda')
-  
-    dataset = TerrainDataset(get_full_path(dataset_folder))
+
+    size_img_format = 768
+    dataset = TerrainDataset(get_full_path(dataset_folder), size=size_img_format)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     max_train_steps = num_epochs * len(dataloader) // gradient_accumulation_steps
@@ -166,7 +162,7 @@ def train_lora_custom():
             prompt_embeds = static_prompt_embeds.repeat(bsz, 1, 1)
             pooled_prompt_embeds = static_pooled_embeds.repeat(bsz, 1)
                 
-            add_time_ids = torch.tensor([[1024, 1024, 0, 0, 1024, 1024]], dtype=torch.float16, device=device)
+            add_time_ids = torch.tensor([[size_img_format, size_img_format, 0, 0, size_img_format, size_img_format]], dtype=torch.float16, device=device)
             add_time_ids = add_time_ids.repeat(bsz, 1) 
 
             added_cond_kwargs = {"text_embeds": pooled_prompt_embeds, "time_ids": add_time_ids}
@@ -182,7 +178,7 @@ def train_lora_custom():
                 print("IL COLPETEVOLE È IL NOISE SCHEDULER: Il rumore aggiunto ha generato NaN!")
 
 
-            with torch.amp.autocast('cuda', dtype=torch.bfloat16):
+            with torch.amp.autocast('cuda', dtype=torch.float16):
                 noise_pred = unet(
                     noisy_latents, 
                     timesteps, 
@@ -190,7 +186,9 @@ def train_lora_custom():
                     added_cond_kwargs=added_cond_kwargs
                 ).sample
 
-            loss = F.mse_loss(noise_pred.float(), noise.float(), reduction="mean")
+                loss = F.mse_loss(noise_pred, noise, reduction="mean")
+
+            loss_value = loss.item()
 
             loss = loss / gradient_accumulation_steps
             scaler.scale(loss).backward()
@@ -211,7 +209,7 @@ def train_lora_custom():
 
             print("\n===== END GRADIENT CHECK =====")
 
-            epoch_loss += loss.item() * gradient_accumulation_steps
+            epoch_loss += loss_value
 
             if (step + 1) % gradient_accumulation_steps == 0 or (step + 1) == len(dataloader):
                 # 1. Riporta i gradienti alla scala normale prima del clipping
@@ -270,13 +268,38 @@ def train_lora_custom():
 
         print(f"Saving checkpoint Epoch {epoch+1}...")
         cartella_epoca = get_full_path(output_dir_weights_epoch, f"epoch_{epoch+1}")
-        unet.save_pretrained(cartella_epoca)
+
+        #unet.save_pretrained(cartella_epoca)
+
+        os.makedirs(cartella_epoca, exist_ok=True)
+        
+        # Estrarre i soli pesi del LoRA dall'oggetto PEFT unet
+        peft_state_dict = get_peft_model_state_dict(unet)
+        diffusers_lora_state_dict = convert_all_state_dict_to_peft(peft_state_dict)
+
+        pipe.save_lora_weights(
+            save_directory=cartella_epoca,
+            weight_name="pytorch_lora_weights.safetensors",
+            unet_lora_layers=diffusers_lora_state_dict
+        )
+
         print(f"Checkpoint saved: {cartella_epoca}\n")
-        #print(f"Epoch {epoch+1}/{num_epochs} - Loss: {epoch_loss/len(dataloader):.4f}")
+
 
     print("Saving the final model...")
     cartella_model_final = get_full_path(output_dir_model)
-    unet.save_pretrained(cartella_model_final)
+    #unet.save_pretrained(cartella_model_final)
+    os.makedirs(cartella_model_final, exist_ok=True)
+        
+    peft_state_dict = get_peft_model_state_dict(unet)
+    diffusers_lora_state_dict = convert_all_state_dict_to_peft(peft_state_dict)
+        
+    pipe.save_lora_weights(
+        save_directory=cartella_model_final,
+        weight_name="pytorch_lora_weights.safetensors",
+        unet_lora_layers=diffusers_lora_state_dict
+    )
+
     print(f"Training completed! Final weights saved in: {cartella_model_final}")
 
 if __name__ == "__main__":
