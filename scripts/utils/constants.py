@@ -88,3 +88,6 @@ PATH_FOLDER_SDXL = "data/renders/sdxl_img"
 PATH_DATASET_GENERATED = "data/heightmaps/heightmap_png"
 PATH_MODEL_WEIGHTS= "data/sdxl_model/weights"
 PATH_MODEL_SINGLE_EPOCH_WEIGHTS= "data/sdxl_model/weights_epoch"
+# Da usare in TerrainDataset quando si è definito meglio il range di valore dell'Altezza della montagna
+HEIGHT_MIN = 0.0
+HEIGHT_MAX = 1.0

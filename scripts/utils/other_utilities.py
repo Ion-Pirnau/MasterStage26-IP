@@ -220,6 +220,20 @@ def converti_exr_a_png_16bit(cartella_sorgente, cartella_destinazione):
                     img_gray = img_exr[:, :, 0] 
                 else:
                     img_gray = img_exr
+
+                print(f"\nFile: {nome_file}")
+                print("Shape:", img_gray.shape)
+                print("Dtype:", img_gray.dtype)
+                print("Min:", np.min(img_gray))
+                print("Max:", np.max(img_gray))
+                print("Mean:", np.mean(img_gray))
+                print("Std:", np.std(img_gray))
+                print("Percentile 1%:", np.percentile(img_gray, 1))
+                print("Percentile 99%:", np.percentile(img_gray, 99))
+
+                user_command = ""
+                while user_command.strip().lower() != "continue":
+                    user_command = input("\nType 'continue' to resume Method For Training or Press CTRL+C for exit: ")
                 
                 # Taglia i valori sotto 0 e sopra 1 per sicurezza
                 img_clipped = np.clip(img_gray, 0.0, 1.0)
@@ -240,4 +254,25 @@ def converti_exr_a_png_16bit(cartella_sorgente, cartella_destinazione):
                 print(f"ERRORE GRAVE con il file {nome_file}: {e}")
                 
     print(f"Finito! File convertiti: {file_convertiti}")
+
+def inspect_png(path):
+    """
+    Inspects a PNG heightmap directly using ImageIO, without applying
+    any preprocessing or conversion.
+
+    This test verifies whether the 16-bit height values are preserved
+    correctly during the EXR-to-PNG conversion.
+    """
+    print("\n===== PNG TEST =====")
+
+    img = iio.imread(path)
+
+    print("Shape:", img.shape)
+    print("Dtype:", img.dtype)
+    print("Min:", img.min())
+    print("Max:", img.max())
+    print("Mean:", img.mean())
+    print("Std:", img.std())
+
+    print("===== END PNG TEST =====\n")
 

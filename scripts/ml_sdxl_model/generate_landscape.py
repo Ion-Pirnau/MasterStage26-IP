@@ -1,13 +1,63 @@
 import torch
 from diffusers import StableDiffusionXLPipeline, DPMSolverMultistepScheduler
 import sys, os
+from pathlib import Path
+from peft import PeftModel
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__))) 
 
 from utils.utils_method import get_full_path
-from utils.constants import PATH_FOLDER_SDXL, PATH_MODEL_SINGLE_EPOCH_WEIGHTS
+from utils.constants import PATH_FOLDER_SDXL, PATH_MODEL_SINGLE_EPOCH_WEIGHTS, PATH_MODEL_WEIGHTS
 
-def generate_landscape():
+def generate_without_lora():
+    model_id = "stabilityai/stable-diffusion-xl-base-1.0"
+
+    print("Caricamento SDXL BASE senza LoRA...")
+
+    pipe = StableDiffusionXLPipeline.from_pretrained(
+        model_id,
+        torch_dtype=torch.float16,
+        variant="fp16",
+        use_safetensors=True
+    )
+
+    pipe = pipe.to("cuda")
+
+    pipe.scheduler = DPMSolverMultistepScheduler.from_config(
+        pipe.scheduler.config,
+        use_karras_sigmas=True
+    )
+
+    generator = torch.Generator(device="cuda").manual_seed(42)
+
+    print("Generazione senza LoRA...")
+
+    image = pipe(
+        prompt="",
+        negative_prompt="",
+        num_inference_steps=30,
+        guidance_scale=1.0,
+        original_size=(1024, 1024),
+        target_size=(1024, 1024),
+        crops_coords_top_left=(0, 0),
+        width=1024,
+        height=1024,
+        generator=generator,
+    ).images[0]
+
+    image = image.convert("L")
+
+    output_path = get_full_path(
+        PATH_MODEL_SINGLE_EPOCH_WEIGHTS,
+        "test_SDXL_senza_LoRA.png"
+    )
+
+    image.save(output_path)
+
+    print(f"Immagine salvata: {output_path}")
+
+
+def generate_landscape(num_epoch):
     model_id = "stabilityai/stable-diffusion-xl-base-1.0"
     print(f"Caricamento del modello {model_id} in corso...")
 
@@ -25,20 +75,56 @@ def generate_landscape():
         use_karras_sigmas=True
     )
 
-
     # CARICAMENTO LORA
-    nome_cartella_epoca = "epoch_2"
+    nome_cartella_epoca = num_epoch
     lora_weights = 1.0
-    lora_folder_path = get_full_path(PATH_MODEL_SINGLE_EPOCH_WEIGHTS, nome_cartella_epoca)
-    file_pesi = get_full_path(PATH_FOLDER_SDXL, nome_cartella_epoca, "adapter_model.safetensors")
+    lora_folder_path = Path(
+        get_full_path(
+            PATH_MODEL_WEIGHTS,
+            nome_cartella_epoca
+        )
+    ) 
 
-    if os.path.exists(lora_folder_path):
-        print(f"Caricamento del LoRA custom dalla cartella: {lora_folder_path}")
-        pipe.load_lora_weights(lora_folder_path)
-        print("LoRA caricato e fuso con successo sulla UNet!")
-    else:
-        print(f"ATTENZIONE: Cartella {lora_folder_path} NON TROVATA! Generazione base.")
+    print("Cartella LoRA:", lora_folder_path)
+    print("Esiste:", lora_folder_path.exists())
 
+    if lora_folder_path.exists():
+        print("Contenuto:")
+        for file in lora_folder_path.iterdir():
+            print("  -", file.name)
+
+    print(f"Caricamento LoRA PEFT dalla cartella: {lora_folder_path}")
+
+    if not os.path.exists(lora_folder_path):
+        raise FileNotFoundError(
+            f"Cartella LoRA non trovata: {lora_folder_path}"
+        )
+
+    # La UNet originale è già presente nella pipeline
+    unet_base = pipe.unet
+
+    # Carica l'adapter PEFT sopra la UNet
+    unet_lora = PeftModel.from_pretrained(
+        unet_base,
+        lora_folder_path,
+        is_trainable=False
+    )
+    pipe.unet = unet_lora.merge_and_unload()
+
+    # Sostituisce la UNet della pipeline con quella dotata dell'adapter
+    pipe.unet = unet_lora
+
+    print("\n===== PEFT LOAD CHECK =====")
+    print("Tipo UNet:", type(pipe.unet))
+
+    print("Adapter names:", pipe.unet.peft_config.keys())
+
+    print("Trainable parameters:")
+    pipe.unet.print_trainable_parameters()
+
+    print("===== END PEFT LOAD CHECK =====\n")
+
+    print("LoRA PEFT caricata correttamente.")
     
     # GENERAZIONE UNCONDITIONED (Senza Testo)
     print("Generazione dell'immagine in corso...")
@@ -47,22 +133,22 @@ def generate_landscape():
     image = pipe(
         prompt = "",
         negative_prompt= "",
-        num_inference_steps=30,
-        guidance_scale=0.0,
+        num_inference_steps=50,
+        guidance_scale=1.0,
         original_size=(1024, 1024),
         target_size=(1024, 1024),
         crops_coords_top_left=(0, 0),
         width=1024,
         height=1024,
-        generator=generator,
-        cross_attention_kwargs={"scale": lora_weights}
+        generator=generator
     ).images[0]
 
-    image = image.convert("L")
+    #image = image.convert("L")
     # Salvataggio
     output_path = get_full_path(PATH_FOLDER_SDXL, f"paesaggio_generato_{nome_cartella_epoca}_LoRaAttiva.png")
     image.save(output_path)
     print(f"Immagine salvata con successo in: {output_path}")
 
 if __name__ == "__main__":
-    generate_landscape()
+    generate_landscape("")
+    #generate_without_lora()
