@@ -5,3 +5,4 @@ __pycache__/
 data/heightmaps/heightmap_exr
 data/heightmaps/heightmap_png
 data/heightmaps/splatmap_png
+data/sdxl_model
