@@ -1,6 +1,7 @@
-import sys, subprocess, os
-from utils.utils_method import path_exists
-from utils.constants import BLENDER_SCRIPT, BLEND_FILE, BLENDER_EXECUTABLE
+import sys, subprocess
+from utils.utils_method import path_exists, load_config
+from utils.constants import BLENDER_SCRIPT, BLEND_FILE, BLENDER_EXECUTABLE, GENERATION_MODE_RANDOM
+from tqdm import tqdm
 
 def main():
     """
@@ -40,6 +41,11 @@ def main():
     - Standard output and error streams are captured and printed for debugging.
     """
 
+    config = load_config()
+    settings = config["dataset_settings"]
+    mode = settings.get("generation_mode", "fixed")
+    TOTAL_IMAGES = settings["num_terrains_to_generate"] if mode == GENERATION_MODE_RANDOM else 1
+
     print("Start generation dataset pipeline...")
 
     if not path_exists(BLEND_FILE):
@@ -57,32 +63,39 @@ def main():
     ]
 
     try:
-        result = subprocess.run(command, check=True, text=True, capture_output=True)
-        print("Generation completed successfully!")
+        process = subprocess.Popen(command, 
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=1,
+            universal_newlines=True
+            )
 
-        for line in result.stdout:
-            print(f"[BLENDER]: {line}", end="")
+        with tqdm(total=TOTAL_IMAGES, desc="Generating Maps", unit="img") as pbar:
+            for line in process.stdout:
+                line_clean = line.strip()
+                
+                if "BLENDER_IMAGE_DONE" in line_clean:
+                    pbar.update(1)
+                
+                elif line_clean:
+                    spam_keywords = ["Fra:", "Time:", "Saved:", "Blender quit", "Read blend:", "Sample"]
+                    
+                    if any(spam in line_clean for spam in spam_keywords):
+                        continue
+                    
+                    tqdm.write(f"[BLENDER] {line_clean}")
 
-        if not result.stdout == '':
-            print("Output:")
-            print(result.stdout)
-        if not result.stderr == '':
-            print("Errors:")
-            print(result.stderr)
+        process.wait()
 
-        print("Return Code:")
-        print(result.returncode)
+        if process.returncode == 0:
+            print("\nGeneration completed successfully!")
+        else:
+            print(f"\nError: Blender exited with code {process.returncode}")
 
-    except subprocess.CalledProcessError as e:
-        print(f"Error during Blender execution. Exit Code: {e.returncode}")
-
-        print("\n--- Blender Detail Error ---")
-        print(e.stderr) 
-    
-        print("\n--- OUTPUT ---")
-        print(e.stdout)
     except FileNotFoundError:
         print("Error: Blender not found. Make sure you have it installed and added in the system PATH")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
 
 
 if __name__ == "__main__":

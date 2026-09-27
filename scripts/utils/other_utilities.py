@@ -230,10 +230,6 @@ def converti_exr_a_png_16bit(cartella_sorgente, cartella_destinazione):
                 print("Std:", np.std(img_gray))
                 print("Percentile 1%:", np.percentile(img_gray, 1))
                 print("Percentile 99%:", np.percentile(img_gray, 99))
-
-                user_command = ""
-                while user_command.strip().lower() != "continue":
-                    user_command = input("\nType 'continue' to resume Method For Training or Press CTRL+C for exit: ")
                 
                 # Taglia i valori sotto 0 e sopra 1 per sicurezza
                 img_clipped = np.clip(img_gray, 0.0, 1.0)

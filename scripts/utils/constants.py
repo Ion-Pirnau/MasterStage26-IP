@@ -65,6 +65,7 @@ TIFF_FOLDER = "tiff_to_convert"
 MESH_FOLDER = "meshes"
 OUTPUT_TIFF_OFF_CONVERT_NAME = "convert_tiff_off_"
 TIFF_EXTENSION = "tif"
+TXT_EXTENSION = "txt"
 OFF_EXTENSION = "off"
 OBJ_EXTENSION = "obj"
 
@@ -85,6 +86,7 @@ RESOLUTION_XY = 2048
 
 # FOR STABLE DIFFUSION MODEL XL
 PATH_FOLDER_SDXL = "data/renders/sdxl_img"
+PATH_CAPTIONS_IMG = "data/heightmaps/captions_img"
 PATH_DATASET_GENERATED = "data/heightmaps/heightmap_png"
 PATH_MODEL_WEIGHTS = "data/sdxl_model/weights"
 PATH_MODEL_SINGLE_EPOCH_WEIGHTS= "data/sdxl_model/weights_epoch"

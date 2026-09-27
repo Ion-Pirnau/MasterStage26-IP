@@ -1,47 +1,11 @@
 import os
 import numpy as np
-import bpy, json, random, sys
+import bpy, random, sys
 import mathutils, math
 sys.path.append(os.path.dirname(os.path.dirname(__file__))) 
 
-from utils.utils_method import get_full_path, obj_to_off
+from utils.utils_method import get_full_path, obj_to_off, load_config
 from utils.constants import *
-
-def load_config():
-    """
-    Loads the configuration file in JSON format.
-
-    This function reads the global CONFIG_FILE and parses its content
-    into a Python dictionary. In case of failure, it handles file-related
-    exceptions and returns None.
-
-    Parameters
-    ----------
-    None
-
-    Returns
-    -------
-    dict or None
-        Parsed configuration dictionary if successful, otherwise None.
-
-    Raises
-    ------
-    None
-        Exceptions are caught internally and reported via print.
-
-    Notes
-    -----
-    - The configuration file is expected to be in valid JSON format.
-    - Errors during file access or parsing are handled gracefully.
-    """
-
-    print(CONFIG_FILE)
-    try:
-        with open(CONFIG_FILE, 'r') as f:
-            return json.load(f)
-    except (FileNotFoundError, IOError) as e:
-        print(f"Error during opening: {e}")
-        return None
 
 def set_modifier_value(modifier, identifier, value):
     """
@@ -437,6 +401,28 @@ def export_hillshade(obj, filepath, res_x, res_y):
 
     return True
 
+def write_on_file(filepath: str, content: str) -> None:
+    """
+    Writes a given string of text to a file at the specified path.
+
+    This function is primarily used to save procedural generation parameters
+    as text captions (prompts) for Stable Diffusion XL dataset training.
+    It automatically creates the parent directories if they do not exist
+    and uses UTF-8 encoding to ensure text compatibility.
+
+    Args:
+        filepath (str): The absolute path to the destination file (e.g., a .txt file).
+        content (str): The string of text (caption/prompt) to write into the file.
+        
+    Returns:
+        None
+    """
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    
+    with open(filepath, "w", encoding="utf-8") as file:
+        file.write(content)
+
+
 
 def export_maps_via_render(obj, filepath_heightmap, filepath_splatmap, res_x, res_y, material_socket_id, isSplatActive=False):
     """
@@ -467,13 +453,11 @@ def export_maps_via_render(obj, filepath_heightmap, filepath_splatmap, res_x, re
     # ==========================================
     # FASE 1: RENDER HEIGHTMAP (Scala di Grigi)
     # ==========================================
-    print("Generazione Heightmap in corso...")
     
     # Imposta lo switch del materiale su False (Heightmap)
     mod[material_socket_id] = False 
     
     scene.render.image_settings.file_format = 'OPEN_EXR'
-    print(filepath_heightmap)
     scene.render.filepath = filepath_heightmap
     
     bpy.ops.render.render(write_still=True)
@@ -485,8 +469,6 @@ def export_maps_via_render(obj, filepath_heightmap, filepath_splatmap, res_x, re
     # ==========================================
 
     if isSplatActive:
-        print("Generazione Splatmap in corso...")
-        
         mod[material_socket_id] = True 
         
         scene.render.image_settings.file_format = 'PNG'
@@ -569,6 +551,9 @@ def generate_terrain():
 
     for i in range(num_to_generate):
         print(f"\n--- Generation {i+1}/{num_to_generate} ---")
+
+        current_image_params = {}
+
         for param_name, param_data in params.items():
             if mode == GENERATION_MODE_FIXED:
                 val = param_data["value"]
@@ -579,10 +564,23 @@ def generate_terrain():
                     val = random.randint(int(param_data["min"]), int(param_data["max"]))
                 else:
                     val = random.uniform(param_data["min"], param_data["max"])
+
             set_modifier_value(mod, param_name, val)
             print(f"Set {param_name} = {val}")
 
+            current_image_params[param_name] = val
+
         bpy.context.view_layer.update()
+
+        caption_elements = ["terrain heightmap"]
+        for p_name, p_val in current_image_params.items():
+            caption_elements.append(f"{p_name} {p_val}")
+
+        final_prompt = ", ".join(caption_elements)
+        text_filename = f"{NAME_HEIGHTMAPS}{i:04d}.{TXT_EXTENSION}"
+        text_filepath = get_full_path(PATH_CAPTIONS_IMG, text_filename)
+
+        write_on_file(text_filepath, final_prompt)
 
         if settings["export_render_png"]:
             print(get_full_path(settings["output_folder_renders"]))
@@ -632,6 +630,8 @@ def generate_terrain():
                              render_path,
                              res_x=res_xy,
                              res_y=res_xy)
+
+        print("BLENDER_IMAGE_DONE", flush=True)
 
 
 

@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .vscode
 data/heightmaps/heightmap_exr
+data/heightmaps/captions_img
 data/heightmaps/heightmap_png
 data/heightmaps/splatmap_png
 data/sdxl_model
