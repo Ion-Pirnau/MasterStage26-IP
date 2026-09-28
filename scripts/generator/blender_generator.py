@@ -7,6 +7,59 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.utils_method import get_full_path, obj_to_off, load_config
 from utils.constants import *
 
+def build_optimized_prompt(params_dict):
+    """
+    Builds an optimized text prompt (caption) for Stable Diffusion training
+    based on the currently active procedural terrain parameters.
+
+    It maps long parameter names to short tokens, formats floats to 2 decimal
+    places to save token space, and excludes inactive parameters (False) 
+    and non-visual metadata (like seeds).
+
+    Parameters
+    ----------
+    params_dict : dict
+        A dictionary containing the generated values for the current image.
+
+    Returns
+    -------
+    str
+        A comma-separated string containing the optimized prompt.
+    """
+    caption_elements = ["trn_hmp"]
+
+    caption_elements.append(f"sn1 {params_dict['Scale_Noise_One']:.2f}")
+    caption_elements.append(f"sn2 {params_dict['Scale_Noise_Two']:.2f}")
+
+    if params_dict['Attiva Erosione']:
+        caption_elements.append("ero")
+        caption_elements.append(f"erons {params_dict['Noise Scale Erosione']:.2f}")
+        caption_elements.append(f"erodp {params_dict['Profondita Erosione']:.2f}")
+
+    if params_dict['Attiva Crateri']:
+        caption_elements.append("cra")
+        caption_elements.append(f"cradist {params_dict['Distance Min']:.2f}")
+        caption_elements.append(f"craden {params_dict['Density Max']:.2f}")
+        caption_elements.append(f"vlch {params_dict['Vulcani_Altezza']:.2f}")
+        caption_elements.append(f"vlcin {params_dict['Vulcani_Raggio_Interno']:.2f}")
+        caption_elements.append(f"vlcout {params_dict['Vulcani_Raggio_Esterno']:.2f}")
+
+    if params_dict['Attiva Montagna']:
+        caption_elements.append("mnt")
+        caption_elements.append(f"mscl {params_dict['Scale']:.2f}")
+        caption_elements.append(f"mfield {params_dict['Campo di Forza']:.2f}")
+        caption_elements.append(f"mhmax {params_dict['Altezza Max Montagna']:.2f}")
+        caption_elements.append(f"mslp {params_dict['Ripidita Montagna']:.2f}")
+        caption_elements.append(f"mw {params_dict['Larghezza Montagna']:.2f}")
+
+    if params_dict['Attiva Fan']:
+        caption_elements.append("fan")
+        caption_elements.append(f"fanlen {params_dict['Length']:.2f}")
+        caption_elements.append(f"fanang {params_dict['Angle']:.2f}")
+        caption_elements.append(f"fanh {params_dict['Height']:.2f}")
+
+    return ", ".join(caption_elements)
+
 def set_modifier_value(modifier, identifier, value):
     """
     Sets a value on a Geometry Nodes modifier input.
@@ -566,17 +619,13 @@ def generate_terrain():
                     val = random.uniform(param_data["min"], param_data["max"])
 
             set_modifier_value(mod, param_name, val)
-            print(f"Set {param_name} = {val}")
 
             current_image_params[param_name] = val
 
         bpy.context.view_layer.update()
 
-        caption_elements = ["terrain heightmap"]
-        for p_name, p_val in current_image_params.items():
-            caption_elements.append(f"{p_name} {p_val}")
+        final_prompt = build_optimized_prompt(current_image_params)
 
-        final_prompt = ", ".join(caption_elements)
         text_filename = f"{NAME_HEIGHTMAPS}{i:04d}.{TXT_EXTENSION}"
         text_filepath = get_full_path(PATH_CAPTIONS_IMG, text_filename)
 

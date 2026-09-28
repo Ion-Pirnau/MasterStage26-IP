@@ -27,12 +27,14 @@ class TerrainDataset(Dataset):
     representation, and finally normalized to [-1, 1] for the SDXL VAE.
     """
 
-    def __init__(self, image_dir, size=1024):
+    def __init__(self, image_dir, caption_dir, size=1024):
         self.image_path = [
             os.path.join(image_dir, f)
             for f in os.listdir(image_dir)
             if f.lower().endswith((".png", ".jpg", ".jpeg"))
         ]
+
+        self.caption_dir = caption_dir
 
         if len(self.image_path) == 0:
             raise RuntimeError(
@@ -83,6 +85,7 @@ class TerrainDataset(Dataset):
         return len(self.image_path)
 
     def __getitem__(self, index):
+        img_file_path = self.image_path[index]
 
         # Load 16-bit heightmap
         img = iio.imread(self.image_path[index])
@@ -123,9 +126,21 @@ class TerrainDataset(Dataset):
         # [0, 1] → [-1, 1] for SDXL VAE
         img = img * 2.0 - 1.0
 
+        # Load Text
+        base_name = os.path.splitext(os.path.basename(img_file_path))[0]
+        txt_file_path = os.path.join(self.caption_dir, base_name + ".txt")
+
+        prompt_text = ""
+        if os.path.exists(txt_file_path):
+            with open(txt_file_path, "r", encoding="utf-8") as f:
+                prompt_text = f.read().strip()
+        else:
+            print(f"ATTENZIONE: File di testo non trovato per {base_name}")
+            prompt_text = "terrain heightmap"
+
         return {
             "image": img,
-            "text": self.dummy_prompt
+            "text": prompt_text
         }
 
 

@@ -1,6 +1,7 @@
 import tifffile as tiff
 import os
 from pathlib import Path
+import re
 import numpy as np
 from utils.utils_method import path_exists
 import imageio.v3 as iio
@@ -272,3 +273,138 @@ def inspect_png(path):
 
     print("===== END PNG TEST =====\n")
 
+
+def optimize_caption_files(
+    cartella_sorgente, cartella_destinazione, rimuovi_false=True
+):
+    """Reads caption text files from a source directory, optimizes their content,
+
+    and writes the processed text to a destination directory.
+
+    The function scans all text files in the specified source folder. It filters
+    out
+    technical parameters (Grid Size, Resolution, Material activation, and
+    Seeds),
+    rounds long decimals to three decimal places, and strips redundant punctuation
+    to optimize token count for CLIP/SDXL model inputs.
+
+    Parameters
+    ----------
+    cartella_sorgente : str
+        The path to the directory containing the original caption text files.
+    cartella_destinazione : str
+        The path to the directory where the optimized caption files will be
+        saved.
+    rimuovi_false : bool, default False
+        If True, strips out all key-value style parameters explicitly designated
+        as 'False'.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    - Only files with a '.txt' extension are processed.
+    - Specifically removes technical attributes: Grid Size, XY Resolution,
+    Resolution,
+      Material Type activation, and any seed parameter.
+    """
+    ACRONIMI = {
+        "Scale_Noise_One": "sn1",
+        "Scale_Noise_Two": "sn2",
+        "Attiva Tipo Materiale": "mat",
+        "Attiva Erosione": "ero",
+        "Noise Scale Erosione": "ero_ns",
+        "Profondita Erosione": "ero_dp",
+        "Attiva Crateri": "cra",
+        "Seed Crateri": "cra_sd",
+        "Distance Min": "dist_min",
+        "Density Max": "dens_max",
+        "Vulcani_Altezza": "vlc_h",
+        "Vulcani_Raggio_Interno": "vlc_r_in",
+        "Vulcani_Raggio_Esterno": "vlc_r_out",
+        "Attiva Montagna": "mnt",
+        "Seed Montagna": "mnt_sd",
+        "Altezza Max Montagna": "mnt_h_max",
+        "Ripidita Montagna": "mnt_slp",
+        "Larghezza Montagna": "mnt_w",
+        "Campo di Forza": "f_field",
+        "Attiva Fan": "fan",
+        "Edge Noise Scale": "edge_ns",
+        "Edge Roughness": "edge_rgh",
+        "terrain heightmap": "trn_hmp",
+        "Detail": "dtl",
+        "Scale": "scl",
+        "Length": "len",
+        "Angle": "ang",
+        "Height": "hgt",
+    }
+
+    file_convertiti = 0
+    print(f"Working on folder: {cartella_sorgente}")
+
+    if not os.path.exists(cartella_destinazione):
+        os.makedirs(cartella_destinazione)
+
+    for nome_file in os.listdir(cartella_sorgente):
+        if nome_file.endswith(".txt"):
+            percorso_sorgente = os.path.join(cartella_sorgente, nome_file)
+            percorso_destinazione = os.path.join(
+                cartella_destinazione, nome_file
+            )
+
+            with open(percorso_sorgente, "r", encoding="utf-8") as f:
+                caption = f.read()
+
+            # 1. Rimozione selettiva globale dei False se richiesto dall'utente
+            if rimuovi_false:
+                caption = re.sub(r",?\s*\w+\s+False,?", "", caption)
+
+            # 2. Rimozione parametri tecnici fissi iniziali
+            caption = re.sub(
+                r",?\s*Dimensione Griglia\s+\d+\.\d+,?", "", caption
+            )
+            caption = re.sub(r",?\s*Risoluzione XY\s+\d+,?", "", caption)
+            caption = re.sub(r",?\s*Risoluzione\s+\d+,?", "", caption)
+
+            # 3. Rimozione preventiva di qualsiasi parametro legato ai Seed
+            caption = re.sub(r",?\s*Seed\s+[\w_]+\s+\d+,?", "", caption)
+
+            # 4. Sostituzione con acronimi (ordinati per lunghezza decrescente)
+            for parola_lunga, acronimo in sorted(
+                ACRONIMI.items(), key=lambda x: len(x[0]), reverse=True
+            ):
+                caption = caption.replace(parola_lunga, acronimo)
+
+            # 5. Arrotondamento di tutti i decimali rimasti a 3 cifre decimali
+            caption = re.sub(
+                r"\d+\.\d+", lambda m: f"{float(m.group()):.3f}", caption
+            )
+
+            # 6. Logica di ripristino della sintassi e delle virgole
+            # Rimuove le virgole vecchie per ricostruire una spaziatura uniforme
+            caption = re.sub(r",\s*", " ", caption)
+
+            # Inserisce la virgola dopo un numero seguito da una lettera (es: "0.273 sn2")
+            caption = re.sub(r"(\d+)\s+([a-zA-Z_])", r"\1, \2", caption)
+
+            # Inserisce la virgola dopo True o False seguiti da una lettera (es: "True ero_ns")
+            caption = re.sub(
+                r"(True|False)\s+([a-zA-Z_])", r"\1, \2", caption
+            )
+
+            # Inserisce la virgola iniziale dopo "trn_hmp" se manca
+            caption = re.sub(r"(trn_hmp)\s+([a-zA-Z_])", r"\1, \2", caption)
+
+            # Pulizia finale dei residui di punteggiatura
+            caption = re.sub(r",\s*,", ",", caption)
+            caption = re.sub(r"^\s*,\s*", "", caption)
+            caption = caption.strip(", ")
+
+            with open(percorso_destinazione, "w", encoding="utf-8") as f:
+                f.write(caption)
+
+            file_convertiti += 1
+
+    print(f"Finito! Caption ottimizzati : {file_convertiti}")

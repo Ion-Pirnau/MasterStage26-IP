@@ -2,7 +2,7 @@
     "dataset_settings": {
         "generation_mode": "random",
         "camera_ortho_active": true,
-        "num_terrains_to_generate": 5,
+        "num_terrains_to_generate": 25,
         "output_folder_renders": "data/renders",
         "output_folder_meshes": "data/meshes",
         "output_folder_maps": "data/heightmaps",

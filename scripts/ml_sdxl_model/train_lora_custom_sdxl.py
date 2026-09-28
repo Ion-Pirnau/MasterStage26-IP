@@ -16,8 +16,63 @@ print(diffusers.__version__)
 sys.path.append(os.path.dirname(os.path.dirname(__file__))) 
 
 from utils.utils_method import get_full_path
-from utils.constants import PATH_DATASET_GENERATED, PATH_MODEL_WEIGHTS, PATH_MODEL_SINGLE_EPOCH_WEIGHTS, PATH_MODEL_SDXL_ORI
+from utils.constants import PATH_DATASET_GENERATED, PATH_MODEL_WEIGHTS, PATH_MODEL_SINGLE_EPOCH_WEIGHTS, PATH_MODEL_SDXL_ORI, PATH_CAPTIONS_IMG
 from utils.utils_ml import test_sdxl_conditioning, test_sdxl_time_ids, test_sdxl_unet_forward, test_vae_reconstruction, TerrainDataset
+
+def encode_prompt_sdxl(batch_texts, tokenizers, text_encoders, device):
+    """
+    Encodes a batch of text prompts using the dual tokenizers and text encoders of SDXL.
+
+    This function tokenizes the input text using two separate CLIP tokenizers, 
+    passes the token IDs through their respective text encoders, extracts the 
+    penultimate hidden states, and concatenates them to form the final prompt 
+    embeddings. It also extracts the pooled text embeddings from the second encoder.
+
+    Parameters
+    ----------
+    batch_texts : list of str
+        A list of text prompts to be encoded.
+    tokenizers : tuple or list
+        A collection containing the two SDXL tokenizers (typically CLIPTokenizer 
+        and CLIPTokenizerFast/OpenCLIPTokenizer).
+    text_encoders : tuple or list
+        A collection containing the two SDXL text encoders (typically CLIPTextModel 
+        and CLIPTextModelWithProjection).
+    device : torch.device or str
+        The target device (e.g., 'cuda' or 'cpu') where tensors should be allocated.
+
+    Returns
+    -------
+    prompt_embeds : torch.Tensor
+        The concatenated hidden states from both text encoders, extracted from 
+        the penultimate layer (-2). Shape: (batch_size, sequence_length, hidden_dim_1 + hidden_dim_2).
+    pooled_prompt_embeds : torch.Tensor
+        The pooled text embeddings from the second text encoder, used for SDXL 
+        time embeddings. Shape: (batch_size, pooled_dim).
+
+    Notes
+    -----
+    - Input texts are automatically padded and truncated to a maximum length of 77 tokens.
+    - Hidden states are extracted from the penultimate layer (`hidden_states[-2]`) 
+      following standard Stable Diffusion XL practices.
+    """
+     
+    tok1, tok2 = tokenizers
+    te1, te2 = text_encoders
+
+    txt_in_1 = tok1(batch_texts, padding="max_length", max_length=77, truncation=True, return_tensors="pt").to(device)
+    txt_in_2 = tok2(batch_texts, padding="max_length", max_length=77, truncation=True, return_tensors="pt").to(device)
+    
+    out_1 = te1(txt_in_1.input_ids, output_hidden_states=True)
+    out_2 = te2(txt_in_2.input_ids, output_hidden_states=True)
+    
+    static_prompt_embeds_1 = out_1.hidden_states[-2]
+    static_prompt_embeds_2 = out_2.hidden_states[-2]
+    prompt_embeds = torch.cat([static_prompt_embeds_1, static_prompt_embeds_2], dim=-1)
+    
+    pooled_prompt_embeds = out_2.text_embeds if hasattr(out_2, "text_embeds") else out_2.pooler_output
+
+    return prompt_embeds, pooled_prompt_embeds
 
 
 def train_lora_custom():
@@ -149,7 +204,7 @@ def train_lora_custom():
     scaler = torch.amp.GradScaler('cuda')
 
     size_img_format = 1024
-    dataset = TerrainDataset(get_full_path(dataset_folder), size=size_img_format)
+    dataset = TerrainDataset(get_full_path(dataset_folder), get_full_path(PATH_CAPTIONS_IMG), size=size_img_format)
     dataset.image_path = dataset.image_path[:num_img_to_use]
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
@@ -159,26 +214,6 @@ def train_lora_custom():
         num_warmup_steps=int(max_train_steps * 0.05),  
         num_training_steps=max_train_steps
     )
-
-    print("Pre-calculation of text's embedding...")
-    with torch.no_grad():
-        dummy_text = [""]
-        txt_in_1 = tokenizer_1(dummy_text, padding="max_length", max_length=77, truncation=True, return_tensors="pt").to(device)
-        txt_in_2 = tokenizer_2(dummy_text, padding="max_length", max_length=77, truncation=True, return_tensors="pt").to(device)
-        
-        out_1 = text_encoder_1(txt_in_1.input_ids, output_hidden_states=True)
-        out_2 = text_encoder_2(txt_in_2.input_ids, output_hidden_states=True)
-        
-        static_prompt_embeds_1 = out_1.hidden_states[-2]
-        static_prompt_embeds_2 = out_2.hidden_states[-2]
-        static_prompt_embeds = torch.cat([static_prompt_embeds_1, static_prompt_embeds_2], dim=-1)
-        
-        static_pooled_embeds = out_2.text_embeds if hasattr(out_2, "text_embeds") else out_2.pooler_output
-
-        print(static_pooled_embeds.shape)
-
-    del text_encoder_1, text_encoder_2, tokenizer_1, tokenizer_2
-    torch.cuda.empty_cache()
 
     print("Start Training...")
     unet.train()
@@ -195,9 +230,17 @@ def train_lora_custom():
         
         for step, batch in enumerate(progress_bar):
             images = batch["image"].to(device, dtype=torch.float32)
+            texts = batch["text"]
             bsz = images.shape[0]
 
             with torch.no_grad():
+                prompt_embeds, pooled_prompt_embeds = encode_prompt_sdxl(
+                    texts, 
+                    (tokenizer_1, tokenizer_2), 
+                    (text_encoder_1, text_encoder_2), 
+                    device
+                )
+
                 latents = vae.encode(images).latent_dist.sample()
                 latents = (latents * vae.config.scaling_factor).to(dtype=torch.float32)
 
@@ -205,11 +248,6 @@ def train_lora_custom():
             
             timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=device).long()  
             noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-
-            #noisy_latents.requires_grad_(True) 
-
-            prompt_embeds = static_prompt_embeds.repeat(bsz, 1, 1)
-            pooled_prompt_embeds = static_pooled_embeds.repeat(bsz, 1)
                 
             add_time_ids = torch.tensor([[size_img_format, size_img_format, 0, 0, size_img_format, size_img_format]], dtype=torch.float16, device=device)
             add_time_ids = add_time_ids.repeat(bsz, 1) 

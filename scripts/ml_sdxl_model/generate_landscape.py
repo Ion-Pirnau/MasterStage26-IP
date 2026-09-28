@@ -137,11 +137,20 @@ def generate_landscape(num_epoch):
     print("Generazione dell'immagine in corso...")
     generator = torch.Generator(device="cuda").manual_seed(42)
 
+    prompt_addestrato = (
+        "trn_hmp, sn1 0.53, sn2 0.73, cra, cradist 5.24, craden 0.26, vlch 1.98, vlcin 0.20, vlcout 0.31, mnt, mscl 0.91, mfield 45.12, mhmax 23.43, mslp 22.07, mw 2.99, fan, fanlen 0.22, fanang 54.03, fanh 0.11"
+    )
+
+    negative_prompt_addestrato = (
+        "color, photorealistic, 3d render, shadows, lighting, "
+        "water, trees, text, watermark, artifacts, noisy, flat, blurry"
+    )
+
     image = pipe(
-        prompt = "smooth grayscale depth map, soft terrain heightmap, top view",
-        negative_prompt= "noise, grainy, marble pattern, high frequency, sharp edges, artifacts, detailed texture",
+        prompt = prompt_addestrato,
+        negative_prompt= negative_prompt_addestrato,
         num_inference_steps=50,
-        guidance_scale=1.8,
+        guidance_scale=6.0,
         original_size=(1024, 1024),
         target_size=(1024, 1024),
         crops_coords_top_left=(0, 0),
@@ -157,5 +166,5 @@ def generate_landscape(num_epoch):
     print(f"Immagine salvata con successo in: {output_path}")
 
 if __name__ == "__main__":
-    generate_landscape("epoch_25")
+    generate_landscape("epoch_27")
     #generate_without_lora()
