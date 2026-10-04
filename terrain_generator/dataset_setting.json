@@ -2,7 +2,7 @@
     "dataset_settings": {
         "generation_mode": "random",
         "camera_ortho_active": true,
-        "num_terrains_to_generate": 25,
+        "num_terrains_to_generate": 500,
         "output_folder_renders": "data/renders",
         "output_folder_meshes": "data/meshes",
         "output_folder_maps": "data/heightmaps",
@@ -138,8 +138,8 @@
         "Campo di Forza": {
             "type": "float",
             "value": 95.0,
-            "min": 0.0,
-            "max": 100.0
+            "min": 90.0,
+            "max": 180.0
         },
         "Altezza Max Montagna": {
             "type": "float",

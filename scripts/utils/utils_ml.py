@@ -4,12 +4,137 @@ import os, sys
 from PIL import Image
 import imageio.v3 as iio
 import torch.nn.functional as F
+import torch.nn as nn
 from torch.utils.data import Dataset
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__))) 
 
 from utils.utils_method import get_full_path
 from utils.constants import PATH_FOLDER_SDXL
+
+class GANTerrainDataset(Dataset):
+    """
+    Dataset per GAN: 16-bit heightmaps in scala di grigi (1 canale).
+    Senza captions di testo.
+    """
+    def __init__(self, image_dir, size=256):
+        
+        self.image_path = [
+            os.path.join(image_dir, f)
+            for f in os.listdir(image_dir)
+            if f.lower().endswith((".png", ".jpg", ".jpeg", ".tiff", ".tif"))
+        ]
+
+        if len(self.image_path) == 0:
+            raise RuntimeError(f"Nessuna heightmap trovata in: {image_dir}")
+
+        self.size = size
+
+        print("Calcolo range globale delle altezze...")
+        self.global_min = np.inf
+        self.global_max = -np.inf
+
+        for path in self.image_path:
+            heightmap = iio.imread(path)
+            heightmap = heightmap.astype(np.float32)
+            self.global_min = min(self.global_min, heightmap.min())
+            self.global_max = max(self.global_max, heightmap.max())
+
+        print(f"Global min: {self.global_min}, Global max: {self.global_max}")
+
+    def __len__(self):
+        return len(self.image_path)
+
+    def __getitem__(self, index):
+        img = iio.imread(self.image_path[index])
+        img = img.astype(np.float32)
+
+        img = (img - self.global_min) / (self.global_max - self.global_min)
+
+        img = torch.from_numpy(img).unsqueeze(0)
+
+        img = F.interpolate(
+            img.unsqueeze(0),
+            size=(self.size, self.size),
+            mode="bilinear",
+            align_corners=False
+        ).squeeze(0)
+
+        img = img * 2.0 - 1.0
+
+        return img
+
+class UpsampleBlock(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
+        self.bn = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU(True)
+
+    def forward(self, x):
+        x = self.upsample(x)
+        x = self.conv(x)
+        x = self.bn(x)
+        return self.relu(x)
+
+class Generator(nn.Module):
+    def __init__(self, latent_dim):
+        super(Generator, self).__init__()
+        
+        self.init_size = 4
+        self.l1 = nn.Sequential(nn.Linear(latent_dim, 512 * self.init_size ** 2))
+        
+        # Upsampling progressivo: 4 -> 8 -> 16 -> 32 -> 64 -> 128 -> 256
+        self.conv_blocks = nn.Sequential(
+            nn.BatchNorm2d(512),
+            UpsampleBlock(512, 256),   # 8x8
+            UpsampleBlock(256, 128),   # 16x16
+            UpsampleBlock(128, 64),    # 32x32
+            UpsampleBlock(64, 32),     # 64x64
+            UpsampleBlock(32, 16),     # 128x128
+            UpsampleBlock(16, 8),      # 256x256
+            
+            nn.Conv2d(8, 1, kernel_size=3, padding=1),
+            nn.Tanh()
+        )
+
+    def forward(self, z):
+        out = self.l1(z)
+        out = out.view(out.shape[0], 512, self.init_size, self.init_size)
+        img = self.conv_blocks(out)
+        return img
+
+class Discriminator(nn.Module):
+    def __init__(self):
+        super(Discriminator, self).__init__()
+
+        def discriminator_block(in_filters, out_filters, bn=True):
+            block = [nn.Conv2d(in_filters, out_filters, 3, 2, 1), nn.LeakyReLU(0.2, inplace=True)]
+            if bn:
+                block.append(nn.BatchNorm2d(out_filters))
+            return block
+
+        self.model = nn.Sequential(
+            *discriminator_block(1, 16, bn=False), # 128
+            *discriminator_block(16, 32),          # 64
+            *discriminator_block(32, 64),          # 32
+            *discriminator_block(64, 128),         # 16
+            *discriminator_block(128, 256),        # 8
+            *discriminator_block(256, 512),        # 4
+        )
+
+
+        self.adv_layer = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(512 * 4 * 4, 1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, img):
+        out = self.model(img)
+        validity = self.adv_layer(out)
+        return validity
 
 class TerrainDataset(Dataset):
     """

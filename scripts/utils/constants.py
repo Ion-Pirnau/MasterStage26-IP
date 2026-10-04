@@ -86,11 +86,12 @@ RESOLUTION_XY = 2048
 
 # FOR STABLE DIFFUSION MODEL XL
 PATH_FOLDER_SDXL = "data/renders/sdxl_img"
+PATH_FOLDER_GAN = "data/renders/gan_img"
 PATH_CAPTIONS_IMG = "data/heightmaps/captions_img"
 PATH_DATASET_GENERATED = "data/heightmaps/heightmap_png"
-PATH_MODEL_WEIGHTS = "data/sdxl_model/weights"
-PATH_MODEL_SINGLE_EPOCH_WEIGHTS= "data/sdxl_model/weights_epoch"
-PATH_MODEL_SDXL_ORI = "data/sdxl_model"
+PATH_MODEL_WEIGHTS = "data/model_weights/weights"
+PATH_MODEL_SINGLE_EPOCH_WEIGHTS= "data/model_weights/weights_epoch"
+PATH_MODEL_SDXL_ORI = "data/model_weights"
 # Da usare in TerrainDataset quando si è definito meglio il range di valore dell'Altezza della montagna
 HEIGHT_MIN = 0.0
 HEIGHT_MAX = 1.0

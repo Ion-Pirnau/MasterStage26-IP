@@ -9,54 +9,80 @@ from utils.constants import *
 
 def build_optimized_prompt(params_dict):
     """
-    Builds an optimized text prompt (caption) for Stable Diffusion training
-    based on the currently active procedural terrain parameters.
-
-    It maps long parameter names to short tokens, formats floats to 2 decimal
-    places to save token space, and excludes inactive parameters (False) 
-    and non-visual metadata (like seeds).
-
-    Parameters
-    ----------
-    params_dict : dict
-        A dictionary containing the generated values for the current image.
-
-    Returns
-    -------
-    str
-        A comma-separated string containing the optimized prompt.
+    Builds an optimized, semantic text prompt for Stable Diffusion training.
+    It automatically converts numerical continuous parameters into discrete 
+    semantic text tags (e.g., 'high mountain steepness') based on min/max ranges.
     """
-    caption_elements = ["trn_hmp"]
 
-    caption_elements.append(f"sn1 {params_dict['Scale_Noise_One']:.2f}")
-    caption_elements.append(f"sn2 {params_dict['Scale_Noise_Two']:.2f}")
+    ranges = {
+        "Scale_Noise_One": (0.21, 1.0),
+        "Scale_Noise_Two": (0.11, 0.9),
+        "Noise Scale Erosione": (0.1, 2.5),
+        "Profondita Erosione": (0.1, 0.2),
+        "Distance Min": (3.0, 8.0),
+        "Density Max": (0.005, 1.5),
+        "Vulcani_Altezza": (0.1, 2.0),
+        "Vulcani_Raggio_Interno": (0.0, 0.9),
+        "Vulcani_Raggio_Esterno": (0.0, 1.0),
+        "Scale": (0.1, 1.0),
+        "Campo di Forza": (90.0, 180.0),
+        "Altezza Max Montagna": (10.0, 28.0),
+        "Ripidita Montagna": (20.0, 200.0),
+        "Larghezza Montagna": (1.0, 6.0),
+        "Length": (0.0, 3.0),
+        "Angle": (10.0, 100.0),
+        "Height": (0.0, 0.3)
+    }
 
+    def get_level(param_name, val):
+        min_v, max_v = ranges[param_name]
+        if max_v == min_v: return "medium"
+    
+        percent = (val - min_v) / (max_v - min_v)
+        percent = max(0.0, min(1.0, percent))
+
+        if percent < 0.20: return "very low"
+        elif percent < 0.40: return "low"
+        elif percent < 0.60: return "medium"
+        elif percent < 0.80: return "high"
+        else: return "very high"
+
+    caption_elements = ["heightmap terrain"]
+
+    # Base Noise
+    caption_elements.append(f"{get_level('Scale_Noise_One', params_dict['Scale_Noise_One'])} base noise")
+    caption_elements.append(f"{get_level('Scale_Noise_Two', params_dict['Scale_Noise_Two'])} secondary noise")
+
+    # Erosion
     if params_dict['Attiva Erosione']:
-        caption_elements.append("ero")
-        caption_elements.append(f"erons {params_dict['Noise Scale Erosione']:.2f}")
-        caption_elements.append(f"erodp {params_dict['Profondita Erosione']:.2f}")
+        caption_elements.append("erosion")
+        caption_elements.append(f"{get_level('Noise Scale Erosione', params_dict['Noise Scale Erosione'])} erosion frequency")
+        caption_elements.append(f"{get_level('Profondita Erosione', params_dict['Profondita Erosione'])} erosion depth")
 
+    # Craters
     if params_dict['Attiva Crateri']:
-        caption_elements.append("cra")
-        caption_elements.append(f"cradist {params_dict['Distance Min']:.2f}")
-        caption_elements.append(f"craden {params_dict['Density Max']:.2f}")
-        caption_elements.append(f"vlch {params_dict['Vulcani_Altezza']:.2f}")
-        caption_elements.append(f"vlcin {params_dict['Vulcani_Raggio_Interno']:.2f}")
-        caption_elements.append(f"vlcout {params_dict['Vulcani_Raggio_Esterno']:.2f}")
+        caption_elements.append("craters")
+        caption_elements.append(f"{get_level('Distance Min', params_dict['Distance Min'])} crater spacing")
+        caption_elements.append(f"{get_level('Density Max', params_dict['Density Max'])} crater density")
+        caption_elements.append(f"{get_level('Vulcani_Altezza', params_dict['Vulcani_Altezza'])} crater height")
+        caption_elements.append(f"{get_level('Vulcani_Raggio_Interno', params_dict['Vulcani_Raggio_Interno'])} inner radius")
+        caption_elements.append(f"{get_level('Vulcani_Raggio_Esterno', params_dict['Vulcani_Raggio_Esterno'])} outer radius")
 
+    # Mountain
     if params_dict['Attiva Montagna']:
-        caption_elements.append("mnt")
-        caption_elements.append(f"mscl {params_dict['Scale']:.2f}")
-        caption_elements.append(f"mfield {params_dict['Campo di Forza']:.2f}")
-        caption_elements.append(f"mhmax {params_dict['Altezza Max Montagna']:.2f}")
-        caption_elements.append(f"mslp {params_dict['Ripidita Montagna']:.2f}")
-        caption_elements.append(f"mw {params_dict['Larghezza Montagna']:.2f}")
+        caption_elements.append("mountains")
+        caption_elements.append(f"{get_level('Scale', params_dict['Scale'])} mountain scale")
+        caption_elements.append(f"{get_level('Campo di Forza', params_dict['Campo di Forza'])} force field")
+        caption_elements.append(f"{get_level('Altezza Max Montagna', params_dict['Altezza Max Montagna'])} mountain height")
+        caption_elements.append(f"{get_level('Ripidita Montagna', params_dict['Ripidita Montagna'])} mountain steepness")
+        caption_elements.append(f"{get_level('Larghezza Montagna', params_dict['Larghezza Montagna'])} mountain width")
 
+    # Fan
     if params_dict['Attiva Fan']:
-        caption_elements.append("fan")
-        caption_elements.append(f"fanlen {params_dict['Length']:.2f}")
-        caption_elements.append(f"fanang {params_dict['Angle']:.2f}")
-        caption_elements.append(f"fanh {params_dict['Height']:.2f}")
+        caption_elements.append("alluvial fan")
+        caption_elements.append(f"{get_level('Length', params_dict['Length'])} fan length")
+        caption_elements.append(f"{get_level('Angle', params_dict['Angle'])} fan angle")
+        caption_elements.append(f"{get_level('Height', params_dict['Height'])} fan height")
 
     return ", ".join(caption_elements)
 
