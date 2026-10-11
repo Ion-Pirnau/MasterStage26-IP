@@ -6,6 +6,7 @@ import imageio.v3 as iio
 import torch.nn.functional as F
 import torch.nn as nn
 from torch.utils.data import Dataset
+import torchvision.transforms as transforms
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__))) 
 
@@ -40,6 +41,12 @@ class GANTerrainDataset(Dataset):
             self.global_min = min(self.global_min, heightmap.min())
             self.global_max = max(self.global_max, heightmap.max())
 
+        self.transform = transforms.Compose([
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomVerticalFlip(p=0.5),
+            transforms.RandomRotation(degrees=(0, 360)) 
+        ])
+
         print(f"Global min: {self.global_min}, Global max: {self.global_max}")
 
     def __len__(self):
@@ -60,6 +67,8 @@ class GANTerrainDataset(Dataset):
             align_corners=False
         ).squeeze(0)
 
+        img = self.transform(img)
+
         img = img * 2.0 - 1.0
 
         return img
@@ -71,12 +80,14 @@ class UpsampleBlock(nn.Module):
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
         self.bn = nn.BatchNorm2d(out_channels)
         self.relu = nn.ReLU(True)
+        self.dropout = nn.Dropout2d(0.2) 
 
     def forward(self, x):
         x = self.upsample(x)
         x = self.conv(x)
         x = self.bn(x)
-        return self.relu(x)
+        x = self.relu(x)
+        return self.dropout(x)
 
 class Generator(nn.Module):
     def __init__(self, latent_dim):

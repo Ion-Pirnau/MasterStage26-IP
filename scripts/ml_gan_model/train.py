@@ -22,10 +22,13 @@ from utils.constants import (
 @dataclass
 class GANConfig:
     """Configuration class for GAN hyperparameters."""
-    latent_dim: int = 100
-    batch_size: int = 16
-    epochs: int = 200
-    learning_rate: float = 0.0002
+    latent_dim: int = 128
+    batch_size: int = 32
+    epochs: int = 300
+
+    lr_G: float = 0.0001   # Il generatore va a velocità normale
+    lr_D: float = 0.00005  # Il discriminatore va 4 volte più lento!
+
     image_size: int = 256
     beta1: float = 0.5
     beta2: float = 0.999
@@ -53,8 +56,8 @@ def train_gan(
     
     # Initialize Loss function and Optimizers
     adversarial_loss = nn.BCELoss()
-    optimizer_G = optim.Adam(generator.parameters(), lr=config.learning_rate, betas=(config.beta1, config.beta2))
-    optimizer_D = optim.Adam(discriminator.parameters(), lr=config.learning_rate, betas=(config.beta1, config.beta2))
+    optimizer_G = optim.Adam(generator.parameters(), lr=config.lr_G, betas=(config.beta1, config.beta2))
+    optimizer_D = optim.Adam(discriminator.parameters(), lr=config.lr_D, betas=(config.beta1, config.beta2))
 
     # Ensure output directories exist
     os.makedirs(get_full_path(PATH_MODEL_WEIGHTS), exist_ok=True)
@@ -82,7 +85,7 @@ def train_gan(
             current_batch_size = real_imgs.size(0)
             
             # Ground truth labels
-            valid = torch.ones((current_batch_size, 1), device=device)
+            valid = torch.full((current_batch_size, 1), 0.9, device=device)
             fake = torch.zeros((current_batch_size, 1), device=device)
 
             optimizer_G.zero_grad()

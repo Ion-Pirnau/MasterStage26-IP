@@ -19,13 +19,15 @@ from utils.constants import (
 @dataclass
 class GenerateConfig:
     """Configuration class for Heightmap Generation."""
-    latent_dim: int = 100
-    num_maps: int = 10
-    model_filename: str = get_full_path(PATH_MODEL_SINGLE_EPOCH_WEIGHTS,"generator_final.pth")
+    latent_dim: int = 128
+    num_maps: int = 20
+    model_filename: str = get_full_path(PATH_MODEL_SINGLE_EPOCH_WEIGHTS,"generator_epoch_50.pth")
     output_dir: str = PATH_FOLDER_GAN
     # Costanti per il 16-bit puro (non alterare con l'altezza in metri)
-    pixel_min: float = 0.0
-    pixel_max: float = 65535.0
+    #pixel_min: float = 0.0
+    #pixel_max: float = 65535.0
+    pixel_min: float = 3287.0
+    pixel_max: float = 52959.0
 
 
 def generate_heightmaps(

@@ -7,3 +7,5 @@ data/heightmaps/captions_img
 data/heightmaps/heightmap_png
 data/heightmaps/splatmap_png
 data/sdxl_model
+data/model_weights
+data/renders

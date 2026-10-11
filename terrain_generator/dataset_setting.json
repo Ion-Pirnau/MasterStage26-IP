@@ -2,7 +2,7 @@
     "dataset_settings": {
         "generation_mode": "random",
         "camera_ortho_active": true,
-        "num_terrains_to_generate": 500,
+        "num_terrains_to_generate": 300,
         "output_folder_renders": "data/renders",
         "output_folder_meshes": "data/meshes",
         "output_folder_maps": "data/heightmaps",
@@ -74,7 +74,7 @@
         "Attiva Crateri": {
             "type": "boolean",
             "value": true,
-            "probability": 0.8
+            "probability": 0.9
         },
         "Seed Crateri": {
             "type": "int",
@@ -115,7 +115,7 @@
         "Attiva Montagna": {
             "type": "boolean",
             "value": true,
-            "probability": 0.6
+            "probability": 1.0
         },
         "Seed Montagna": {
             "type": "int",
@@ -162,7 +162,7 @@
         "Attiva Fan": {
             "type": "boolean",
             "value": true,
-            "probability": 0.9
+            "probability": 0.99
         },
         "Length": {
             "type": "float",
