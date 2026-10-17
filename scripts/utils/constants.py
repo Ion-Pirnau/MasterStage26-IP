@@ -75,13 +75,13 @@ NAME_GENERATED_TERRAIN = "newterrain_"
 EXTENSION_RENDERING = "png"
 INBLEND_IMAGE_NAME = "Heightmap_Export"
 FILE_FORMAT_IMG = "OPEN_EXR"
-NAME_HEIGHTMAPS = "heightmap0_"
+NAME_HEIGHTMAPS = "heightmap1_"
 NAME_HILLSHADE = "hillshade_"
 EXTENSION_HEIGHTMAP_EXR = "exr"
 EXTENSION_HEIGHTMAP_ASC = "asc"
 EXTENSION_HILLSHADE = "PNG"
 COLOR_MODE_HILLSHADE = "BW"
-RESOLUTION_XY = 2048
+RESOLUTION_XY = 1024
 
 
 # FOR STABLE DIFFUSION MODEL XL
@@ -92,6 +92,7 @@ PATH_DATASET_GENERATED = "data/heightmaps/heightmap_png"
 PATH_MODEL_WEIGHTS = "data/model_weights/weights"
 PATH_MODEL_SINGLE_EPOCH_WEIGHTS= "data/model_weights/weights_epoch"
 PATH_MODEL_SDXL_ORI = "data/model_weights"
-# Da usare in TerrainDataset quando si è definito meglio il range di valore dell'Altezza della montagna
+# To be used in TerrainDataset once the mountain height value range is better defined
 HEIGHT_MIN = 0.0
 HEIGHT_MAX = 1.0
+CAPTIONS_ENABLED = True

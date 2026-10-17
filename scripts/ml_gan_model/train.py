@@ -85,7 +85,7 @@ def train_gan(
             current_batch_size = real_imgs.size(0)
             
             # Ground truth labels
-            valid = torch.full((current_batch_size, 1), 0.9, device=device)
+            valid = torch.full((current_batch_size, 1), 0.95, device=device)
             fake = torch.zeros((current_batch_size, 1), device=device)
 
             optimizer_G.zero_grad()

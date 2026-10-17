@@ -505,8 +505,8 @@ def write_on_file(filepath: str, content: str) -> None:
 
 def export_maps_via_render(obj, filepath_heightmap, filepath_splatmap, res_x, res_y, material_socket_id, isSplatActive=False):
     """
-    Esporta sia la Heightmap (EXR) che la Splatmap (PNG) usando la Camera Ortografica.
-    Utilizza l'interruttore booleano dei Geometry Nodes per cambiare materiale.
+    Exports both the Heightmap (EXR) and the Splatmap (PNG) using the Orthographic Camera.
+    Uses the Geometry Nodes boolean switch to change materials.
     """
     
     if not obj:

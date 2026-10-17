@@ -80,14 +80,14 @@ class UpsampleBlock(nn.Module):
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
         self.bn = nn.BatchNorm2d(out_channels)
         self.relu = nn.ReLU(True)
-        self.dropout = nn.Dropout2d(0.2) 
+        #self.dropout = nn.Dropout2d(0.2) 
 
     def forward(self, x):
         x = self.upsample(x)
         x = self.conv(x)
         x = self.bn(x)
-        x = self.relu(x)
-        return self.dropout(x)
+        return self.relu(x)
+        #return self.dropout(x)
 
 class Generator(nn.Module):
     def __init__(self, latent_dim):
@@ -98,15 +98,15 @@ class Generator(nn.Module):
         
         # Upsampling progressivo: 4 -> 8 -> 16 -> 32 -> 64 -> 128 -> 256
         self.conv_blocks = nn.Sequential(
-            nn.BatchNorm2d(512),
-            UpsampleBlock(512, 256),   # 8x8
-            UpsampleBlock(256, 128),   # 16x16
-            UpsampleBlock(128, 64),    # 32x32
-            UpsampleBlock(64, 32),     # 64x64
-            UpsampleBlock(32, 16),     # 128x128
-            UpsampleBlock(16, 8),      # 256x256
+            nn.BatchNorm2d(512),    # Starting grid : 4x4
+            UpsampleBlock(512, 256), 
+            UpsampleBlock(256, 128),   
+            UpsampleBlock(128, 64),    
+            UpsampleBlock(64, 64),    
+            UpsampleBlock(64, 32),    
+            UpsampleBlock(32, 16),    
             
-            nn.Conv2d(8, 1, kernel_size=3, padding=1),
+            nn.Conv2d(16, 1, kernel_size=3, padding=1),
             nn.Tanh()
         )
 
@@ -127,12 +127,12 @@ class Discriminator(nn.Module):
             return block
 
         self.model = nn.Sequential(
-            *discriminator_block(1, 16, bn=False), # 128
-            *discriminator_block(16, 32),          # 64
-            *discriminator_block(32, 64),          # 32
-            *discriminator_block(64, 128),         # 16
-            *discriminator_block(128, 256),        # 8
-            *discriminator_block(256, 512),        # 4
+            *discriminator_block(1, 16, bn=False),
+            *discriminator_block(16, 32),         
+            *discriminator_block(32, 64),         
+            *discriminator_block(64, 128),         
+            *discriminator_block(128, 256),        
+            *discriminator_block(256, 512),       
         )
 
 
@@ -163,14 +163,18 @@ class TerrainDataset(Dataset):
     representation, and finally normalized to [-1, 1] for the SDXL VAE.
     """
 
-    def __init__(self, image_dir, caption_dir, size=1024):
+    def __init__(self, image_dir, caption_dir, size=1024, use_captions=True):
         self.image_path = [
             os.path.join(image_dir, f)
             for f in os.listdir(image_dir)
-            if f.lower().endswith((".png", ".jpg", ".jpeg"))
+            if f.lower().endswith((".png", ".jpg", ".jpeg", ".exr"))
         ]
 
+        self.use_captions = use_captions
         self.caption_dir = caption_dir
+
+        if self.use_captions and not self.caption_dir:
+            raise ValueError("captions_dir must be provided if use_captions is True")
 
         if len(self.image_path) == 0:
             raise RuntimeError(
@@ -178,7 +182,6 @@ class TerrainDataset(Dataset):
             )
 
         self.size = size
-        self.dummy_prompt = ""
 
         # Compute global height range across the entire dataset
         print("Computing global height range...")
@@ -233,6 +236,9 @@ class TerrainDataset(Dataset):
                 f"{self.image_path[index]}"
             )
 
+        if img.shape[0] != self.size or img.shape[1] != self.size:
+            raise ValueError(f"Image {img_file_path} is size {img.shape}, expected ({self.size}, {self.size}).")
+
         # Convert uint16 → float32
         img = img.astype(np.float32)
 
@@ -248,31 +254,25 @@ class TerrainDataset(Dataset):
         # [H, W] → [1, H, W]
         img = img.unsqueeze(0)
 
-        # Resize while preserving float32 precision
-        img = F.interpolate(
-            img.unsqueeze(0),
-            size=(self.size, self.size),
-            mode="bilinear",
-            align_corners=False
-        ).squeeze(0)
-
         # Grayscale → RGB
         img = img.repeat(3, 1, 1)
 
         # [0, 1] → [-1, 1] for SDXL VAE
         img = img * 2.0 - 1.0
 
-        # Load Text
-        base_name = os.path.splitext(os.path.basename(img_file_path))[0]
-        txt_file_path = os.path.join(self.caption_dir, base_name + ".txt")
-
         prompt_text = ""
-        if os.path.exists(txt_file_path):
-            with open(txt_file_path, "r", encoding="utf-8") as f:
-                prompt_text = f.read().strip()
-        else:
-            print(f"ATTENZIONE: File di testo non trovato per {base_name}")
-            prompt_text = "terrain heightmap"
+
+        if self.use_captions:
+            # Load Text
+            base_name = os.path.splitext(os.path.basename(img_file_path))[0]
+            txt_file_path = os.path.join(self.caption_dir, base_name + ".txt")
+
+            if os.path.exists(txt_file_path):
+                with open(txt_file_path, "r", encoding="utf-8") as f:
+                    prompt_text = f.read().strip()
+            else:
+                print(f"ATTENTION: Text file not found {base_name}")
+                prompt_text = "terrain heightmap"
 
         return {
             "image": img,

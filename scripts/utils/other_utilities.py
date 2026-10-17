@@ -5,6 +5,9 @@ import re
 import numpy as np
 from utils.utils_method import path_exists
 import imageio.v3 as iio
+import csv
+import os
+import matplotlib.pyplot as plt
 
 
 def geotiff_to_off(tif_path, out_path, downsample=1, xy_resolution_meters=10.0, z_scale=1.0) -> bool:
@@ -408,3 +411,82 @@ def optimize_caption_files(
             file_convertiti += 1
 
     print(f"Finito! Caption ottimizzati : {file_convertiti}")
+
+def plot_training_metrics(csv_path):
+    """
+    Reads the Stable Diffusion training CSV file and generates 
+    a visual dashboard with 4 plots to analyze the learning process.
+    """
+
+    
+    if not os.path.exists(csv_path):
+        print(f"Error: The file {csv_path} does not exist. Make sure that the training has started.")
+        return
+
+    epochs = []
+    losses = []
+    lrs = []
+    mean_abs = []
+    mean_change = []
+
+    with open(csv_path, "r") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            epochs.append(int(row["epoch"]))
+            losses.append(float(row["average_loss"]))
+            lrs.append(float(row["learning_rate"]))
+            mean_abs.append(float(row["lora_mean_abs"]))
+            mean_change.append(float(row["lora_mean_change"]))
+
+    if len(epochs) == 0:
+        print("Il file CSV è vuoto.")
+        return
+
+    fig, axs = plt.subplots(2, 2, figsize=(16, 10))
+    fig.suptitle("Analisi Addestramento LoRA SDXL", fontsize=18, fontweight='bold')
+
+    # ==========================================
+    # Graph 1: Average Loss
+    # ==========================================
+    axs[0, 0].plot(epochs, losses, marker='o', color='tab:red', linewidth=2)
+    axs[0, 0].set_title("Average Loss", fontsize=14)
+    axs[0, 0].set_xlabel("Epoch")
+    axs[0, 0].set_ylabel("MSE Loss")
+    axs[0, 0].grid(True, linestyle='--', alpha=0.7)
+
+    # ==========================================
+    # Graph 2: Learning Rate
+    # ==========================================
+    axs[0, 1].plot(epochs, lrs, marker='s', color='tab:blue', linewidth=2)
+    axs[0, 1].set_title("Learning Rate (Cosine Scheduler)", fontsize=14)
+    axs[0, 1].set_xlabel("Epoch")
+    axs[0, 1].set_ylabel("LR")
+    # Usa la notazione scientifica (es. 5e-5) per l'asse Y
+    axs[0, 1].ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+    axs[0, 1].grid(True, linestyle='--', alpha=0.7)
+
+    # ==========================================
+    # Graph 3: LoRA Mean Abs
+    # ==========================================
+    axs[1, 0].plot(epochs, mean_abs, marker='^', color='tab:purple', linewidth=2)
+    axs[1, 0].set_title("LoRA Mean Abs (Magnitudine Pesi)", fontsize=14)
+    axs[1, 0].set_xlabel("Epoch")
+    axs[1, 0].set_ylabel("Valore Assoluto Medio")
+    axs[1, 0].grid(True, linestyle='--', alpha=0.7)
+
+    # ==========================================
+    # Graph 4: LoRA Mean Change
+    # ==========================================
+    axs[1, 1].plot(epochs, mean_change, marker='D', color='tab:green', linewidth=2)
+    axs[1, 1].set_title("LoRA Mean Change (Apprendimento)", fontsize=14)
+    axs[1, 1].set_xlabel("Epoch")
+    axs[1, 1].set_ylabel("Variazione Media da Zero")
+    axs[1, 1].grid(True, linestyle='--', alpha=0.7)
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+    output_png = os.path.splitext(csv_path)[0] + "_dashboard.png"
+    plt.savefig(output_png, dpi=300)
+    print(f"\nGraph saved: {output_png}")
+
+    plt.show()

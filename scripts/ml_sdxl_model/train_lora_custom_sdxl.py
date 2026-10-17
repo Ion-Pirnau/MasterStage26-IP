@@ -16,7 +16,7 @@ print(diffusers.__version__)
 sys.path.append(os.path.dirname(os.path.dirname(__file__))) 
 
 from utils.utils_method import get_full_path
-from utils.constants import PATH_DATASET_GENERATED, PATH_MODEL_WEIGHTS, PATH_MODEL_SINGLE_EPOCH_WEIGHTS, PATH_MODEL_SDXL_ORI, PATH_CAPTIONS_IMG
+from utils.constants import PATH_DATASET_GENERATED, PATH_MODEL_WEIGHTS, PATH_MODEL_SINGLE_EPOCH_WEIGHTS, PATH_MODEL_SDXL_ORI, PATH_CAPTIONS_IMG, CAPTIONS_ENABLED
 from utils.utils_ml import test_sdxl_conditioning, test_sdxl_time_ids, test_sdxl_unet_forward, test_vae_reconstruction, TerrainDataset
 
 def encode_prompt_sdxl(batch_texts, tokenizers, text_encoders, device):
@@ -106,6 +106,7 @@ def train_lora_custom():
     output_dir_model = PATH_MODEL_WEIGHTS
     output_dir_model_ori = PATH_MODEL_SDXL_ORI
     output_dir_weights_epoch = PATH_MODEL_SINGLE_EPOCH_WEIGHTS
+    use_captions = CAPTIONS_ENABLED
 
     batch_size = 1
     gradient_accumulation_steps = 4
@@ -204,7 +205,7 @@ def train_lora_custom():
     scaler = torch.amp.GradScaler('cuda')
 
     size_img_format = 1024
-    dataset = TerrainDataset(get_full_path(dataset_folder), get_full_path(PATH_CAPTIONS_IMG), size=size_img_format)
+    dataset = TerrainDataset(get_full_path(dataset_folder), get_full_path(PATH_CAPTIONS_IMG), size=size_img_format, use_captions=use_captions)
     dataset.image_path = dataset.image_path[:num_img_to_use]
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
@@ -214,6 +215,21 @@ def train_lora_custom():
         num_warmup_steps=int(max_train_steps * 0.05),  
         num_training_steps=max_train_steps
     )
+
+    if not use_captions:
+        print("USE_CAPTIONS is False. Pre-calculating empty prompt embeddings...")
+        with torch.no_grad():
+            dummy_text = [""] # Testo vuoto
+            static_prompt_embeds, static_pooled_embeds = encode_prompt_sdxl(
+                dummy_text, 
+                (tokenizer_1, tokenizer_2), 
+                (text_encoder_1, text_encoder_2), 
+                device
+            )
+            del text_encoder_1, text_encoder_2, tokenizer_1, tokenizer_2
+            torch.cuda.empty_cache()
+    else:
+        print("USE_CAPTIONS is True. Text Encoders will remain in memory for dynamic encoding.")
 
     print("Start Training...")
     unet.train()
@@ -230,16 +246,21 @@ def train_lora_custom():
         
         for step, batch in enumerate(progress_bar):
             images = batch["image"].to(device, dtype=torch.float32)
-            texts = batch["text"]
             bsz = images.shape[0]
 
             with torch.no_grad():
-                prompt_embeds, pooled_prompt_embeds = encode_prompt_sdxl(
-                    texts, 
-                    (tokenizer_1, tokenizer_2), 
-                    (text_encoder_1, text_encoder_2), 
-                    device
-                )
+
+                if use_captions:
+                    texts = batch["text"]
+                    prompt_embeds, pooled_prompt_embeds = encode_prompt_sdxl(
+                        texts, 
+                        (tokenizer_1, tokenizer_2), 
+                        (text_encoder_1, text_encoder_2), 
+                        device
+                    )
+                else:
+                    prompt_embeds = static_prompt_embeds.repeat(bsz, 1, 1)
+                    pooled_prompt_embeds = static_pooled_embeds.repeat(bsz, 1)
 
                 latents = vae.encode(images).latent_dist.sample()
                 latents = (latents * vae.config.scaling_factor).to(dtype=torch.float32)
@@ -255,13 +276,13 @@ def train_lora_custom():
             added_cond_kwargs = {"text_embeds": pooled_prompt_embeds, "time_ids": add_time_ids}
 
             if torch.isnan(latents).any():
-                print("IL COLPETEVOLE È IL VAE: I latenti generati contengono NaN!")
+                print("THE CULPRIT IS THE VAE: Generated latents contain NaNs!")
             if torch.isnan(prompt_embeds).any():
-                print("IL COLPETEVOLE SONO I TEXT ENCODERS: Gli embedding del testo contengono NaN!")
+                print("THE CULPRIT IS THE TEXT ENCODERS: Text embeddings contain NaNs!")
             if torch.isnan(noise).any():
-                print("IL COLPETEVOLE È IL GENERATORE DI RUMORE (noise)!")
+                print("THE CULPRIT IS THE NOISE GENERATOR!")
             if torch.isnan(noisy_latents).any():
-                print("IL COLPETEVOLE È IL NOISE SCHEDULER: Il rumore aggiunto ha generato NaN!")
+                print("THE CULPRIT IS THE NOISE SCHEDULER: Added noise resulted in NaNs!")
 
             with torch.amp.autocast('cuda', dtype=torch.float16):
                 noise_pred = unet(
@@ -320,9 +341,38 @@ def train_lora_custom():
 
 
         media_loss = epoch_loss / len(dataloader)
+        current_lr = lr_scheduler.get_last_lr()[0]
+
+        lora_mean_abs = 0.0
+        lora_mean_change = 0.0
+        count_lora_tensors = 0
+
+        for name, param in unet.named_parameters():
+            if param.requires_grad and "lora_" in name:
+                lora_mean_abs += param.detach().float().abs().mean().item()
+
+                if name in initial_lora:
+                    diff = (param.detach().float().cpu() - initial_lora[name]).abs().mean().item()
+                    lora_mean_change += diff
+                    
+                count_lora_tensors += 1
+
+        if count_lora_tensors > 0:
+            lora_mean_abs /= count_lora_tensors
+            lora_mean_change /= count_lora_tensors
+
+        print(f"\n-> End Epoch {epoch+1}/{num_epochs}")
+        print(f"   Average Loss     : {media_loss:.6f}")
+        print(f"   Learning Rate    : {current_lr:.2e}")
+        print(f"   LoRA Mean Abs    : {lora_mean_abs:.6f}")
+        print(f"   LoRA Mean Change : {lora_mean_change:.6f}\n")
+
         loss_history.append({
             "epoch": epoch + 1,
-            "average_loss": media_loss
+            "average_loss": media_loss,
+            "learning_rate": current_lr,
+            "lora_mean_abs": lora_mean_abs,
+            "lora_mean_change": lora_mean_change
         })
 
         print(f"-> End Epoch {epoch+1} - Average Loss: {media_loss:.6f}\n")
@@ -330,7 +380,7 @@ def train_lora_custom():
         with open(loss_history_path, "w", newline="") as f:
             writer = csv.DictWriter(
                 f,
-                fieldnames=["epoch", "average_loss"]
+                fieldnames=["epoch", "average_loss", "learning_rate", "lora_mean_abs", "lora_mean_change"]
             )
             writer.writeheader()
             writer.writerows(loss_history)
