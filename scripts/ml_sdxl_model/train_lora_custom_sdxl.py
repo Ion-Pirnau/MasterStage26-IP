@@ -7,7 +7,8 @@ from transformers import get_cosine_schedule_with_warmup
 from peft import LoraConfig, get_peft_model
 from tqdm import tqdm
 import bitsandbytes as bnb
-import numpy as np
+from typing import Optional
+from dataclasses import dataclass
 import diffusers
 import csv
 
@@ -18,6 +19,31 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.utils_method import get_full_path
 from utils.constants import PATH_DATASET_GENERATED, PATH_MODEL_WEIGHTS, PATH_MODEL_SINGLE_EPOCH_WEIGHTS, PATH_MODEL_SDXL_ORI, PATH_CAPTIONS_IMG, CAPTIONS_ENABLED
 from utils.utils_ml import test_sdxl_conditioning, test_sdxl_time_ids, test_sdxl_unet_forward, test_vae_reconstruction, TerrainDataset
+
+@dataclass
+class TrainingConfig:
+    """
+    Configuration parameters for the custom Stable Diffusion XL LoRA fine-tuning.
+    
+    Attributes:
+        batch_size (int): Number of training examples utilized in one iteration. 
+            Default is 1.
+        gradient_accumulation_steps (int): Number of steps to accumulate gradients 
+            before performing a backward/update pass. Used to simulate a larger batch size. 
+            Default is 4.
+        learning_rate (float): The initial learning rate for the optimizer. 
+            Default is 5e-5.
+        num_epochs (int): Total number of training epochs to perform. 
+            Default is 27.
+        num_img_to_use (int): The maximum number of images from the dataset 
+            to be used during this training run. Default is 50.
+    """
+    batch_size: int = 1
+    gradient_accumulation_steps: int = 4
+    learning_rate: float = 5e-5
+    num_epochs: int = 20
+    num_img_to_use: Optional[int] = None
+
 
 def encode_prompt_sdxl(batch_texts, tokenizers, text_encoders, device):
     """
@@ -75,7 +101,7 @@ def encode_prompt_sdxl(batch_texts, tokenizers, text_encoders, device):
     return prompt_embeds, pooled_prompt_embeds
 
 
-def train_lora_custom():
+def train_lora_custom(config: TrainingConfig = TrainingConfig()):
 
     """
     Fine-tunes the UNet of Stable Diffusion XL using LoRA on the
@@ -108,13 +134,13 @@ def train_lora_custom():
     output_dir_weights_epoch = PATH_MODEL_SINGLE_EPOCH_WEIGHTS
     use_captions = CAPTIONS_ENABLED
 
-    batch_size = 1
-    gradient_accumulation_steps = 4
+    batch_size = config.batch_size
+    gradient_accumulation_steps = config.gradient_accumulation_steps
     #1e-4
-    learning_rate = 5e-5
+    learning_rate = config.learning_rate
     #27
-    num_epochs = 27
-    num_img_to_use = 50
+    num_epochs = config.num_epochs
+    num_img_to_use = config.num_img_to_use
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -140,7 +166,9 @@ def train_lora_custom():
         user_command = input("\nType 'continue' to resume Method For Training or Press CTRL+C for exit: ")
 
     vae = pipe.vae.to(device, dtype=torch.float32)
+    vae.enable_tiling()
     unet = pipe.unet.to(device, dtype=torch.float16)
+    unet.enable_gradient_checkpointing()
     text_encoder_1 = pipe.text_encoder.to(device)
     text_encoder_2 = pipe.text_encoder_2.to(device)
     tokenizer_1 = pipe.tokenizer
@@ -390,6 +418,46 @@ def train_lora_custom():
         unet.save_pretrained(cartella_epoca)
         print(f"Checkpoint saved: {cartella_epoca}\n")
 
+        if (epoch + 1) % 5 == 0 or epoch == 0:
+            print(f"\n--- Validation Image Generation (Epoch {epoch+1}) ---")
+            unet.eval()
+
+            if use_captions:
+                val_prompt = "heightmap terrain, low base noise, high secondary noise, mountains, low mountain scale, very high force field, " \
+                "medium mountain height, medium mountain steepness, medium mountain width, alluvial fan, very low fan length, high fan angle, " \
+                "very high fan height" 
+                val_guidance = 6.0
+            else:
+                val_prompt = ""
+                val_guidance = 1.0
+
+            pipe.unet = unet
+            val_generator = torch.Generator(device=device).manual_seed(42)
+
+            with torch.no_grad():
+                with torch.amp.autocast('cuda', dtype=torch.float16):
+                    val_image = pipe(
+                        prompt=val_prompt,
+                        negative_prompt="color, photorealistic, 3d render, water, trees",
+                        num_inference_steps=30,
+                        guidance_scale=val_guidance,
+                        original_size=(1024, 1024),
+                        target_size=(1024, 1024),
+                        generator=val_generator
+                    ).images[0]
+
+            visual_output_dir = get_full_path(output_dir_weights_epoch, "training_progress_images")
+            os.makedirs(visual_output_dir, exist_ok=True)
+
+            val_image_gray = val_image.convert('L')
+            val_path = get_full_path(visual_output_dir, f"sample_epoch_{epoch+1:03d}.png")
+            val_image_gray.save(val_path)
+
+            print(f"Image saved in: {val_path}")
+
+            unet.train()
+            print("--- Continue Training ---\n")
+
 
 
     print("Saving the final model...")
@@ -398,4 +466,4 @@ def train_lora_custom():
     print(f"Training completed! Final weights saved in: {cartella_model_final}")
 
 if __name__ == "__main__":
-    train_lora_custom()
+    train_lora_custom(TrainingConfig)
