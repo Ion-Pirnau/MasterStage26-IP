@@ -279,7 +279,47 @@ class TerrainDataset(Dataset):
             "text": prompt_text
         }
 
+class LatentTerrainDataset(Dataset):
+    """
+    Un Dataset fulmineo che carica direttamente i tensori pre-calcolati (.pt)
+    e legge le caption testuali associate.
+    """
+    def __init__(self, latents_dir, captions_dir, use_captions=True):
+        self.latents_dir = latents_dir
+        self.captions_dir = captions_dir
+        self.use_captions = use_captions
+        
+        self.latent_files = sorted([
+            f for f in os.listdir(latents_dir) if f.endswith(".pt")
+        ])
 
+        if len(self.latent_files) == 0:
+            raise RuntimeError(f"Nessun file latente trovato in {latents_dir}")
+
+    def __len__(self):
+        return len(self.latent_files)
+
+    def __getitem__(self, index):
+        latent_filename = self.latent_files[index]
+        latent_path = os.path.join(self.latents_dir, latent_filename)
+        
+        # Carica il tensore pre-calcolato in un millisecondo
+        latent = torch.load(latent_path)
+        
+        prompt_text = ""
+        if self.use_captions:
+            base_name = os.path.splitext(latent_filename)[0]
+            txt_path = os.path.join(self.captions_dir, base_name + ".txt")
+            if os.path.exists(txt_path):
+                with open(txt_path, "r", encoding="utf-8") as f:
+                    prompt_text = f.read().strip()
+            else:
+                prompt_text = "heightmap terrain"
+
+        return {
+            "latent": latent,  # Nota: si chiama 'latent', non 'image'
+            "text": prompt_text
+        }
 
 
 def test_sdxl_unet_forward(pipe, dataset_folder, device="cuda"):

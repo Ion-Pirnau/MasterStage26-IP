@@ -18,7 +18,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from utils.utils_method import get_full_path
 from utils.constants import PATH_DATASET_GENERATED, PATH_MODEL_WEIGHTS, PATH_MODEL_SINGLE_EPOCH_WEIGHTS, PATH_MODEL_SDXL_ORI, PATH_CAPTIONS_IMG, CAPTIONS_ENABLED
-from utils.utils_ml import test_sdxl_conditioning, test_sdxl_time_ids, test_sdxl_unet_forward, test_vae_reconstruction, TerrainDataset
+from utils.utils_ml import test_sdxl_conditioning, test_sdxl_time_ids, test_sdxl_unet_forward, test_vae_reconstruction, TerrainDataset, LatentTerrainDataset
 
 @dataclass
 class TrainingConfig:
@@ -43,6 +43,48 @@ class TrainingConfig:
     learning_rate: float = 5e-5
     num_epochs: int = 20
     num_img_to_use: Optional[int] = None
+
+def precompute_latents_to_disk(original_dataset, vae, device, output_dir):
+    """
+    Passa tutte le immagini nel VAE una sola volta e salva i latenti su disco.
+    Se i file esistono già, salta l'operazione per risparmiare tempo!
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Controlliamo se abbiamo già fatto il caching
+    existing_files = [f for f in os.listdir(output_dir) if f.endswith(".pt")]
+    if len(existing_files) == len(original_dataset):
+        print(f"I latenti sono già stati calcolati ({len(existing_files)} file). Salto il caching!")
+        return
+
+    print("Inizio il Latent Caching... (Verrà fatto una sola volta!)")
+    vae.eval()
+    
+    for i in range(len(original_dataset)):
+        # Estraiamo i dati dal vecchio dataset
+        sample = original_dataset[i]
+        img = sample["image"].unsqueeze(0).to(device, dtype=torch.float32) # Aggiunge la dimensione del batch (1, C, H, W)
+        
+        # Nome originale del file (senza estensione exr/png)
+        img_path = original_dataset.image_path[i]
+        base_name = os.path.splitext(os.path.basename(img_path))[0]
+        
+        with torch.no_grad():
+            # Codifica VAE e moltiplicazione per scaling_factor (esattamente come facevi nel loop!)
+            latent = vae.encode(img).latent_dist.sample()
+            latent = latent * vae.config.scaling_factor
+            
+            # Lo riportiamo alla CPU e rimuoviamo la dimensione batch finta
+            latent = latent.squeeze(0).cpu() 
+        
+        # Salviamo il tensore su disco
+        save_path = os.path.join(output_dir, f"{base_name}.pt")
+        torch.save(latent, save_path)
+        
+        if (i+1) % 10 == 0:
+            print(f"Cached {i+1}/{len(original_dataset)} images...")
+
+    print("Latent Caching completato con successo!")
 
 
 def encode_prompt_sdxl(batch_texts, tokenizers, text_encoders, device):
@@ -233,8 +275,24 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
     scaler = torch.amp.GradScaler('cuda')
 
     size_img_format = 1024
-    dataset = TerrainDataset(get_full_path(dataset_folder), get_full_path(PATH_CAPTIONS_IMG), size=size_img_format, use_captions=use_captions)
-    dataset.image_path = dataset.image_path[:num_img_to_use]
+    latents_folder = get_full_path(dataset_folder + "_latents")
+    original_dataset = TerrainDataset(
+        get_full_path(dataset_folder), 
+        get_full_path(PATH_CAPTIONS_IMG), 
+        size=size_img_format, 
+        use_captions=False)
+
+    precompute_latents_to_disk(original_dataset, vae, device, latents_folder)
+    
+    original_dataset.image_path = original_dataset.image_path[:num_img_to_use]
+
+    del vae
+    del original_dataset
+    pipe.vae = None
+    torch.cuda.empty_cache()
+    print("VAE rimosso dalla VRAM. Memoria liberata con successo!")
+
+    dataset = LatentTerrainDataset(latents_folder, get_full_path(PATH_CAPTIONS_IMG), use_captions=use_captions)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     max_train_steps = num_epochs * len(dataloader) // gradient_accumulation_steps
@@ -273,8 +331,9 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
         optimizer.zero_grad()  
         
         for step, batch in enumerate(progress_bar):
-            images = batch["image"].to(device, dtype=torch.float32)
-            bsz = images.shape[0]
+            latents = batch["latent"].to(device, dtype=torch.float32)
+            #images = batch["image"].to(device, dtype=torch.float32)
+            bsz = latents.shape[0]
 
             with torch.no_grad():
 
@@ -289,9 +348,6 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
                 else:
                     prompt_embeds = static_prompt_embeds.repeat(bsz, 1, 1)
                     pooled_prompt_embeds = static_pooled_embeds.repeat(bsz, 1)
-
-                latents = vae.encode(images).latent_dist.sample()
-                latents = (latents * vae.config.scaling_factor).to(dtype=torch.float32)
 
             noise = torch.randn_like(latents)
             
@@ -434,17 +490,51 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
             pipe.unet = unet
             val_generator = torch.Generator(device=device).manual_seed(42)
 
+            print("Generating validation latents...")
             with torch.no_grad():
                 with torch.amp.autocast('cuda', dtype=torch.float16):
-                    val_image = pipe(
+                    output = pipe(
                         prompt=val_prompt,
                         negative_prompt="color, photorealistic, 3d render, water, trees",
                         num_inference_steps=30,
                         guidance_scale=val_guidance,
                         original_size=(1024, 1024),
                         target_size=(1024, 1024),
-                        generator=val_generator
-                    ).images[0]
+                        generator=val_generator,
+                        output_type="latent"
+                    )
+                    val_latents = output.images[0] if isinstance(output.images, list) else output.images
+
+            print("Temporarily loading VAE into VRAM for validation...")
+            from diffusers import AutoencoderKL
+            from PIL import Image
+
+            temp_vae = AutoencoderKL.from_pretrained(
+                "madebyollin/sdxl-vae-fp16-fix", 
+                torch_dtype=torch.float32
+            ).to(device)
+            temp_vae.enable_tiling()
+
+            print("Decoding latents to image...")
+            with torch.no_grad():
+                # I latenti generati dalla pipeline vanno riscalati prima di passarli al VAE
+                scaled_latents = val_latents / temp_vae.config.scaling_factor
+                
+                # Il VAE richiede float32 per evitare artefatti neri
+                scaled_latents = scaled_latents.to(device, dtype=torch.float32)
+                
+                # Decodifica dei latenti
+                decoded_images = temp_vae.decode(scaled_latents).sample
+                
+                # Convertiamo il tensore in una normale immagine PIL
+                decoded_images = (decoded_images / 2 + 0.5).clamp(0, 1)
+                decoded_images = decoded_images.cpu().permute(0, 2, 3, 1).float().numpy()
+                val_image = Image.fromarray((decoded_images[0] * 255).astype("uint8"))
+
+            # Pulizia immediata della VRAM
+            del temp_vae
+            torch.cuda.empty_cache()
+            print("VAE removed from VRAM. Memory cleared to resume training.")
 
             visual_output_dir = get_full_path(output_dir_weights_epoch, "training_progress_images")
             os.makedirs(visual_output_dir, exist_ok=True)
