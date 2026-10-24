@@ -40,7 +40,7 @@ class TrainingConfig:
     """
     batch_size: int = 1
     gradient_accumulation_steps: int = 4
-    learning_rate: float = 5e-5
+    learning_rate: float = 1e-4
     num_epochs: int = 20
     num_img_to_use: Optional[int] = None
 
@@ -51,7 +51,6 @@ def precompute_latents_to_disk(original_dataset, vae, device, output_dir):
     """
     os.makedirs(output_dir, exist_ok=True)
     
-    # Controlliamo se abbiamo già fatto il caching
     existing_files = [f for f in os.listdir(output_dir) if f.endswith(".pt")]
     if len(existing_files) == len(original_dataset):
         print(f"I latenti sono già stati calcolati ({len(existing_files)} file). Salto il caching!")
@@ -526,7 +525,7 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
                 # Decodifica dei latenti
                 decoded_images = temp_vae.decode(scaled_latents).sample
                 
-                # Convertiamo il tensore in una normale immagine PIL
+                # Conversione del tensore in una normale immagine PIL
                 decoded_images = (decoded_images / 2 + 0.5).clamp(0, 1)
                 decoded_images = decoded_images.cpu().permute(0, 2, 3, 1).float().numpy()
                 val_image = Image.fromarray((decoded_images[0] * 255).astype("uint8"))

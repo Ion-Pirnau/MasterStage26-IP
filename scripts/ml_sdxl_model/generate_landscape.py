@@ -127,10 +127,9 @@ def generate_landscape(num_epoch, num_samples=4, base_seed=42):
 
     print("LoRA PEFT caricata correttamente.")
 
-    prompt_addestrato = (
-        "heightmap terrain, high base noise, low secondary noise, craters, low crater spacing, very low crater density, high crater height, "
-        "low inner radius, very high outer radius, mountains, high mountain scale, very low force field, medium mountain height, medium mountain "
-        "steepness, very low mountain width, alluvial fan, low fan length, medium fan angle, very high fan height"
+    prompt_addestrato = ("heightmap terrain, erosion, very high frequency, medium depth, craters, "
+    "high spacing, very high density, very high height, mountains, medium height, high steepness, high width, alluvial fan, "
+    "very high length, high angle, very low height"
     )
 
     negative_prompt_addestrato = (
@@ -159,11 +158,11 @@ def generate_landscape(num_epoch, num_samples=4, base_seed=42):
             generator=generator
         ).images[0]
 
-        file_name = f"paesaggio_{nome_cartella_epoca}_seed{current_seed}.png"
+        file_name = f"paesaggio_{nome_cartella_epoca}_seed{current_seed}_NewPrompt.png"
         output_path = get_full_path(PATH_FOLDER_SDXL, file_name)
         image.save(output_path)
         print(f"Immagine salvata con successo in: {output_path}")
 
 if __name__ == "__main__":
-    generate_landscape("epoch_15", num_samples=4, base_seed=42)
+    generate_landscape("epoch_8", num_samples=1, base_seed=42)
     #generate_without_lora()

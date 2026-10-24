@@ -2,7 +2,7 @@
     "dataset_settings": {
         "generation_mode": "random",
         "camera_ortho_active": true,
-        "num_terrains_to_generate": 300,
+        "num_terrains_to_generate": 400,
         "output_folder_renders": "data/renders",
         "output_folder_meshes": "data/meshes",
         "output_folder_maps": "data/heightmaps",
@@ -57,7 +57,7 @@
         "Attiva Erosione": {
             "type": "boolean",
             "value": true,
-            "probability": 0.5
+            "probability": 0.45
         },
         "Noise Scale Erosione": {
             "type": "float",
@@ -74,7 +74,7 @@
         "Attiva Crateri": {
             "type": "boolean",
             "value": true,
-            "probability": 0.9
+            "probability": 0.7
         },
         "Seed Crateri": {
             "type": "int",
@@ -115,7 +115,7 @@
         "Attiva Montagna": {
             "type": "boolean",
             "value": true,
-            "probability": 1.0
+            "probability": 0.7
         },
         "Seed Montagna": {
             "type": "int",
@@ -162,7 +162,7 @@
         "Attiva Fan": {
             "type": "boolean",
             "value": true,
-            "probability": 0.99
+            "probability": 0.85
         },
         "Length": {
             "type": "float",
