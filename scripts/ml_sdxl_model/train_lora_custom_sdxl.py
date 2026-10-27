@@ -478,9 +478,8 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
             unet.eval()
 
             if use_captions:
-                val_prompt = "heightmap terrain, low base noise, high secondary noise, mountains, low mountain scale, very high force field, " \
-                "medium mountain height, medium mountain steepness, medium mountain width, alluvial fan, very low fan length, high fan angle, " \
-                "very high fan height" 
+                val_prompt = "heightmap terrain, erosion, medium frequency, very low depth, mountains, medium height, " \
+                "medium steepness, low width, alluvial fan, very high length, very low angle, very low height" 
                 val_guidance = 6.0
             else:
                 val_prompt = ""
