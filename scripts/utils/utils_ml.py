@@ -280,9 +280,11 @@ class TerrainDataset(Dataset):
         }
 
 class LatentTerrainDataset(Dataset):
-    """
-    Un Dataset fulmineo che carica direttamente i tensori pre-calcolati (.pt)
-    e legge le caption testuali associate.
+    """A high-performance Dataset for instantaneous loading of pre-computed tensors and text captions.
+
+    This dataset directly loads pre-extracted latent representations (.pt files) 
+    alongside their corresponding textual terrain descriptions, eliminating runtime 
+    preprocessing overhead to maximize training throughput.
     """
     def __init__(self, latents_dir, captions_dir, use_captions=True):
         self.latents_dir = latents_dir
