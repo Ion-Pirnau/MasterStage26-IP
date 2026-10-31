@@ -289,7 +289,7 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
     del original_dataset
     pipe.vae = None
     torch.cuda.empty_cache()
-    print("VAE rimosso dalla VRAM. Memoria liberata con successo!")
+    print("VAE removed from VRAM. Memory freed successfully!")
 
     dataset = LatentTerrainDataset(latents_folder, get_full_path(PATH_CAPTIONS_IMG), use_captions=use_captions)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
