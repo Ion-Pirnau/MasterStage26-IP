@@ -317,7 +317,6 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
         print("USE_CAPTIONS is True. Text Encoders will remain in memory for dynamic encoding.")
 
     print("Start Training...")
-    unet.train()
     loss_history = []
     loss_history_path = os.path.join(
         get_full_path(output_dir_model_ori),
@@ -326,6 +325,7 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
 
     for epoch in range(num_epochs):
         epoch_loss = 0.0
+        unet.train()
         progress_bar = tqdm(dataloader, desc=f"Epoch {epoch+1}/{num_epochs}")
         optimizer.zero_grad()  
         
@@ -424,7 +424,8 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
 
 
         media_loss = epoch_loss / len(dataloader)
-        current_lr = lr_scheduler.get_last_lr()[0]
+        #current_lr = lr_scheduler.get_last_lr()[0]
+        current_lr = optimizer.param_groups[0]['lr']
 
         lora_mean_abs = 0.0
         lora_mean_change = 0.0

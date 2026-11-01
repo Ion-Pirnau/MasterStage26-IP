@@ -9,6 +9,8 @@ import imageio.v3 as iio
 import csv
 import os
 import matplotlib.pyplot as plt
+import shutil
+from sklearn.cluster import KMeans
 
 
 def geotiff_to_off(tif_path, out_path, downsample=1, xy_resolution_meters=10.0, z_scale=1.0) -> bool:
@@ -405,9 +407,12 @@ def plot_training_metrics(csv_path):
     fig.suptitle("Analisi Addestramento LoRA SDXL", fontsize=18, fontweight='bold')
 
     # ==========================================
-    # Graph 1: Average Loss
+    # Graph 1: Average Loss (With Trend Line)
     # ==========================================
-    axs[0, 0].plot(epochs, losses, marker='o', color='tab:red', linewidth=2)
+    axs[0, 0].plot(epochs, losses, marker='o', color='tab:red', alpha=0.3, label='Real Loss')
+    if len(losses) > 3:
+        trend = np.convolve(losses, np.ones(3)/3, mode='valid')
+        axs[0, 0].plot(epochs[len(epochs) - len(trend):], trend, color='darkred', linewidth=2, label='Trend')
     axs[0, 0].set_title("Average Loss", fontsize=14)
     axs[0, 0].set_xlabel("Epoch")
     axs[0, 0].set_ylabel("MSE Loss")
@@ -449,3 +454,117 @@ def plot_training_metrics(csv_path):
     print(f"\nGraph saved: {output_png}")
 
     plt.show()
+
+def heightmaps_analysis(image_path_source):
+    """
+    Extracts statistical features (standard deviation and entropy) from a heightmap image.
+
+    This function loads an image, converts it to grayscale if necessary, and computes
+    two key terrain descriptors: standard deviation (representing roughness/elevation variety) 
+    and Shannon entropy (representing texture complexity and randomness).
+
+    Args:
+        image_path_source (str): Path to the heightmap image file to analyze.
+
+    Returns:
+        list[float] or None: A list containing [std_dev, entropy] if successful, 
+                             or None if an error occurs during processing.
+    """
+
+    try:
+        img = iio.imread(image_path_source)
+
+        if len(img.shape) == 3 and img.shape[2] >= 3:
+            img = np.dot(img[..., :3], [0.2989, 0.5870, 0.1140])
+
+        std_dev = np.std(img)
+
+        min_val, max_val = np.min(img), np.max(img)
+
+        if min_val == max_val:
+            hist, _ = np.histogram(img, bins=256)
+        else:
+            hist, _ = np.histogram(img, bins=256, range=(min_val, max_val))
+        
+        total_pixels = hist.sum()
+        if total_pixels == 0:
+            print(f"Warning: Cannot build histogram for {image_path_source}")
+            return None
+        
+        hist = hist / hist.sum()
+        entropy = -np.sum(hist * np.log2(hist + 1e-7))
+
+        return [std_dev, entropy]
+    except Exception as e:
+        print(f"Impossibile to read {image_path_source}: {e}")
+        return None
+
+def feature_analysis_heightmaps(image_path_source, image_path_destination, target_images, n_clusters):
+    """
+    Analyzes heightmap images, clusters them by features, and creates a balanced, diverse subset.
+
+    This method extracts features from all valid images in a source directory, categories 
+    them into distinct soil or terrain classes using K-Means clustering, and then performs 
+    uniform stratified sampling. It ensures that the final dataset contains a balanced 
+    number of representative images from each category to maximize diversity.
+
+    Args:
+        image_path_source (str): Path to the directory containing the source heightmap images.
+        image_path_destination (str): Path where the optimized, sampled dataset will be saved.
+        target_images (int): Total number of images desired in the final dataset.
+        n_clusters (int): Number of soil categories/clusters to divide the terrain data into.
+
+    Returns:
+        None
+    """
+    
+    features = []
+    valid_paths = []
+    all_files = os.listdir(image_path_source)
+    valid_files = [
+        f for f in all_files
+        if f.lower().endswith((".png", ".jpg", ".jpeg", ".bmp", ".tiff"))
+    ]
+
+    print("Analyzing heightmaps features...")
+    for filename in tqdm(valid_files, desc="Processing images"):
+        path = os.path.join(image_path_source, filename)
+        feat = heightmaps_analysis(path)
+        if feat is not None:
+            features.append(feat)
+            valid_paths.append(path)
+
+    features = np.array(features)
+    print(f"Complete analysis on {len(valid_paths)} immages.")
+
+    print(f"Clustering into {n_clusters} soil categories...")
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+    labels = kmeans.fit_predict(features)
+
+    counts = np.bincount(labels)
+    for idx, count in enumerate(counts):
+        print(f"   - Category {idx}: {count} images found")
+
+    os.makedirs(image_path_destination, exist_ok=True)
+    images_per_cluster = target_images // n_clusters
+
+    files_to_copy = []
+    for cluster_idx in range(n_clusters):
+        indices = np.where(labels == cluster_idx)[0]
+
+        if len(indices) > images_per_cluster:
+            step = len(indices) / images_per_cluster
+            selected_indices = [indices[int(i * step)] for i in range(images_per_cluster)]
+        else:
+            selected_indices = indices
+
+        for idx in selected_indices:
+            files_to_copy.append(valid_paths[idx])
+
+    print(f"Copying the top {len(files_to_copy)} diverse images to '{image_path_destination}'...")
+
+    for src_path in tqdm(files_to_copy, desc='Copying files'):
+        dst_path = os.path.join(image_path_destination, os.path.basename(src_path))
+        shutil.copy(src_path, dst_path)
+
+    print(f"Done! Your new diverse and optimized dataset is ready in: {image_path_destination}")

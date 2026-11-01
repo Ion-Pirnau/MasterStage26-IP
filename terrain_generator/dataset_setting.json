@@ -61,9 +61,9 @@
         },
         "Noise Scale Erosione": {
             "type": "float",
-            "value": 2.5,
+            "value": 0.75,
             "min": 0.1,
-            "max": 2.5
+            "max": 0.8
         },
         "Profondita Erosione": {
             "type": "float",
@@ -78,38 +78,38 @@
         },
         "Seed Crateri": {
             "type": "int",
-            "value": 0,
+            "value": 1,
             "min": 0,
-            "max": 250
+            "max": 5
         },
         "Distance Min": {
             "type": "float",
             "value": 4.0,
-            "min": 3.0,
-            "max": 8.0
+            "min": 4.0,
+            "max": 6.0
         },
         "Density Max": {
             "type": "float",
-            "value": 0.005,
-            "min": 0.005,
-            "max": 1.5
+            "value": 0.01,
+            "min": 0.01,
+            "max": 0.03
         },
         "Vulcani_Altezza": {
             "type": "float",
-            "value": 0.97,
-            "min": 0.1,
-            "max": 2.0
+            "value": 1.2,
+            "min": 1.2,
+            "max": 1.9
         },
         "Vulcani_Raggio_Interno": {
             "type": "float",
             "value": 0.28,
-            "min": 0,
-            "max": 0.9
+            "min": 0.1,
+            "max": 0.6
         },
         "Vulcani_Raggio_Esterno": {
             "type": "float",
             "value": 0.92,
-            "min": 0,
+            "min": 0.65,
             "max": 1.0
         },
         "Attiva Montagna": {
@@ -120,8 +120,8 @@
         "Seed Montagna": {
             "type": "int",
             "value": 0,
-            "min": 0,
-            "max": 250
+            "min": 20,
+            "max": 50
         },
         "Scale": {
             "type": "float",
@@ -138,26 +138,26 @@
         "Campo di Forza": {
             "type": "float",
             "value": 95.0,
-            "min": 90.0,
+            "min": 110.0,
             "max": 180.0
         },
         "Altezza Max Montagna": {
             "type": "float",
             "value": 28.0,
             "min": 10.0,
-            "max": 28.0
+            "max": 15.0
         },
         "Ripidita Montagna": {
             "type": "float",
             "value": 100.0,
-            "min": 20.0,
-            "max": 200.0
+            "min": 60.0,
+            "max": 100.0
         },
         "Larghezza Montagna": {
             "type": "float",
             "value": 2.0,
-            "min": 1.0,
-            "max": 6.0
+            "min": 3.0,
+            "max": 5.0
         },
         "Attiva Fan": {
             "type": "boolean",
@@ -167,7 +167,7 @@
         "Length": {
             "type": "float",
             "value": 2.5,
-            "min": 0,
+            "min": 0.5,
             "max": 3.0
         },
         "Angle": {
