@@ -455,6 +455,152 @@ def plot_training_metrics(csv_path):
 
     plt.show()
 
+
+def plot_validation_metrics(csv_path):
+    """
+    Reads the validation CSV produced by validate_checkpoints.py and generates
+    a 2x2 dashboard showing how each LoRA checkpoint performs on unseen heightmaps.
+ 
+    Method
+    ------
+    For every checkpoint, the validation script measures the noise-prediction MSE on
+    held-out latents using FIXED timesteps and FIXED noise. Because both are identical
+    for every checkpoint, differences between epochs depend only on the model weights,
+    not on random sampling. This is what makes the curve smooth, unlike the training
+    loss, where timesteps and noise are drawn at random at every step.
+ 
+    The row with ``epoch == 0`` is the base SDXL model (LoRA disabled) and is used as
+    the reference. If it is missing, the first available checkpoint is used instead.
+ 
+    Expected CSV columns
+    --------------------
+    epoch, val_loss, val_t<timestep> ... (one column per fixed timestep)
+ 
+    ``val_loss`` is the plain mean of the per-timestep losses.
+ 
+    Dashboard panels
+    ----------------
+    1. Validation loss per epoch (zoomed y-axis) with the reference as a dotted line
+       and the best checkpoint highlighted.
+    2. Relative change of the validation loss with respect to the reference, in %.
+       This shows the real magnitude of the improvement.
+    3. Relative change per timestep, in %. Low timesteps mostly reflect fine details,
+       high timesteps mostly reflect global structure and mean height.
+    4. Absolute loss per timestep (log scale), because the absolute values differ by
+       orders of magnitude between low and high timesteps.
+ 
+    Notes
+    -----
+    - The absolute validation loss is NOT comparable with the training ``average_loss``:
+      training samples timesteps uniformly at random in [0, 999], while validation uses
+      a small fixed set. Compare shapes and relative changes, not raw values.
+    - The relative change in panel 3 is more informative than the absolute values,
+      because the mean ``val_loss`` is dominated by the low timesteps, where the losses
+      are largest.
+    """
+ 
+    if not os.path.exists(csv_path):
+        print(f"Error: The file {csv_path} does not exist. Run the validation script first.")
+        return
+ 
+    with open(csv_path, "r") as f:
+        rows = list(csv.DictReader(f))
+ 
+    if len(rows) == 0:
+        print("The CSV file is empty.")
+        return
+ 
+    epochs = np.array([int(r["epoch"]) for r in rows])
+    val_loss = np.array([float(r["val_loss"]) for r in rows])
+    t_keys = [k for k in rows[0] if k.startswith("val_t")]
+    t_values = {k: np.array([float(r[k]) for r in rows]) for k in t_keys}
+ 
+    has_base = epochs[0] == 0
+    ref_label = "SDXL base (epoch 0)" if has_base else f"first checkpoint (epoch {epochs[0]})"
+    ref_loss = val_loss[0]
+ 
+    # Best checkpoint among the trained ones (exclude the base model)
+    trained_mask = epochs > 0 if has_base else np.ones_like(epochs, dtype=bool)
+    if not trained_mask.any():
+        print("The CSV contains only the base model: nothing to compare.")
+        return
+    best_idx = int(np.argmin(np.where(trained_mask, val_loss, np.inf)))
+ 
+    def rel_change(values):
+        return 100.0 * (values - values[0]) / values[0]
+ 
+    rel_total = rel_change(val_loss)
+ 
+    fig, axs = plt.subplots(2, 2, figsize=(16, 12))
+    fig.suptitle("Validation on unseen heightmaps (fixed timesteps and noise)", fontsize=18, fontweight='bold')
+ 
+    # ==========================================
+    # Graph 1: Validation loss (zoomed)
+    # ==========================================
+    ax = axs[0, 0]
+    ax.plot(epochs, val_loss, marker='s', color='tab:blue', linewidth=2, label='Validation loss')
+    ax.axhline(ref_loss, color='gray', linestyle=':', label=f'{ref_label}: {ref_loss:.5f}')
+    ax.scatter([epochs[best_idx]], [val_loss[best_idx]], s=160, facecolors='none',
+               edgecolors='tab:red', linewidths=2, zorder=5,
+               label=f'Best: epoch {epochs[best_idx]} ({val_loss[best_idx]:.5f})')
+    ax.set_title("Validation Loss (zoomed y-axis)", fontsize=14)
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("MSE Loss")
+    ax.grid(True, linestyle='--', alpha=0.7)
+    ax.legend()
+ 
+    # ==========================================
+    # Graph 2: Relative change vs reference
+    # ==========================================
+    ax = axs[0, 1]
+    ax.plot(epochs, rel_total, marker='o', color='tab:green', linewidth=2)
+    ax.axhline(0.0, color='gray', linestyle=':')
+    ax.set_title(f"Validation loss change vs {ref_label}", fontsize=14)
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Change (%)")
+    ax.grid(True, linestyle='--', alpha=0.7)
+ 
+    # ==========================================
+    # Graph 3: Relative change per timestep
+    # ==========================================
+    ax = axs[1, 0]
+    for k in t_keys:
+        ax.plot(epochs, rel_change(t_values[k]), marker='o', markersize=4, label=f"t={k[5:]}")
+    ax.axhline(0.0, color='gray', linestyle=':')
+    ax.set_title("Change per timestep vs reference", fontsize=14)
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Change (%)")
+    ax.grid(True, linestyle='--', alpha=0.7)
+    if t_keys:
+        ax.legend()
+ 
+    # ==========================================
+    # Graph 4: Absolute loss per timestep (log scale)
+    # ==========================================
+    ax = axs[1, 1]
+    for k in t_keys:
+        ax.plot(epochs, t_values[k], marker='o', markersize=4, label=f"t={k[5:]}")
+    ax.set_yscale("log")
+    ax.set_title("Validation loss per timestep (log scale)", fontsize=14)
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("MSE Loss")
+    ax.grid(True, linestyle='--', alpha=0.7)
+    if t_keys:
+        ax.legend()
+ 
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+ 
+    output_png = os.path.splitext(csv_path)[0] + "_dashboard.png"
+    plt.savefig(output_png, dpi=300)
+    print(f"\nGraph saved: {output_png}")
+ 
+    print(f"\nReference ({ref_label}): {ref_loss:.6f}")
+    print(f"Best epoch: {epochs[best_idx]} -> {val_loss[best_idx]:.6f} ({rel_total[best_idx]:+.2f}% vs reference)")
+    for k in t_keys:
+        print(f"  t={k[5:]:>4}: {t_values[k][0]:.6f} -> {t_values[k][-1]:.6f} ({rel_change(t_values[k])[-1]:+.2f}%)")
+ 
+    plt.show()
+
 def heightmaps_analysis(image_path_source):
     """
     Extracts statistical features (standard deviation and entropy) from a heightmap image.

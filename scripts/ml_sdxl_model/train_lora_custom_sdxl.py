@@ -46,17 +46,17 @@ class TrainingConfig:
 
 def precompute_latents_to_disk(original_dataset, vae, device, output_dir):
     """
-    Passa tutte le immagini nel VAE una sola volta e salva i latenti su disco.
-    Se i file esistono già, salta l'operazione per risparmiare tempo!
+        Passes all images through the VAE only once and saves the latents to disk.
+        If the files already exist, skips the operation to save time!
     """
     os.makedirs(output_dir, exist_ok=True)
     
     existing_files = [f for f in os.listdir(output_dir) if f.endswith(".pt")]
     if len(existing_files) == len(original_dataset):
-        print(f"I latenti sono già stati calcolati ({len(existing_files)} file). Salto il caching!")
+        print(f"Latents have already been calculated ({len(existing_files)} files). Skipping caching!")
         return
 
-    print("Inizio il Latent Caching... (Verrà fatto una sola volta!)")
+    print("Starting latent caching... (This will only run once!)")
     vae.eval()
     
     for i in range(len(original_dataset)):
@@ -83,7 +83,7 @@ def precompute_latents_to_disk(original_dataset, vae, device, output_dir):
         if (i+1) % 10 == 0:
             print(f"Cached {i+1}/{len(original_dataset)} images...")
 
-    print("Latent Caching completato con successo!")
+    print("Latent Caching completed!")
 
 
 def encode_prompt_sdxl(batch_texts, tokenizers, text_encoders, device):
@@ -202,9 +202,9 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
     #test_sdxl_time_ids(pipe, device="cuda")
     #test_sdxl_unet_forward(pipe, get_full_path(dataset_folder), device="cuda")
 
-    user_command = ""
-    while user_command.strip().lower() != "continue":
-        user_command = input("\nType 'continue' to resume Method For Training or Press CTRL+C for exit: ")
+    #user_command = ""
+    #while user_command.strip().lower() != "continue":
+    #    user_command = input("\nType 'continue' to resume Method For Training or Press CTRL+C for exit: ")
 
     vae = pipe.vae.to(device, dtype=torch.float32)
     vae.enable_tiling()
@@ -348,7 +348,11 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
                     prompt_embeds = static_prompt_embeds.repeat(bsz, 1, 1)
                     pooled_prompt_embeds = static_pooled_embeds.repeat(bsz, 1)
 
-            noise = torch.randn_like(latents)
+            #noise = torch.randn_like(latents)
+            noise_offset = 0.05
+            noise = torch.randn_like(latents) + noise_offset * torch.randn(
+                latents.shape[0], latents.shape[1], 1, 1, device=latents.device
+            )
             
             timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=device).long()  
             noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
