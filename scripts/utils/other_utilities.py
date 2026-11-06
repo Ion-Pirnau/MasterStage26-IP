@@ -456,6 +456,70 @@ def plot_training_metrics(csv_path):
     plt.show()
 
 
+def plot_loss_by_timestep_bin(csv_path):
+
+    """
+    Plots the training loss separately for each timestep bin, to make the learning
+    signal visible despite the noise of the overall average loss.
+
+    Motivation
+    ----------
+    During training a timestep t in [0, 999] is drawn at random for every sample, and
+    the noise-prediction MSE depends strongly on t (it is large at low t and very small
+    at high t). The epoch-average loss therefore fluctuates with the random mix of
+    timesteps that was drawn, even if the model does not change. Averaging the loss
+    inside narrower timestep bins removes most of this dependency, so each curve is
+    smoother and a real improvement becomes easier to see.
+
+    Parameters
+    ----------
+    csv_path : str
+        Path to the per-bin log written during training (``loss_history_bins.csv``).
+        Expected columns: ``epoch`` plus one column per bin, named
+        ``loss_bin<i>_t<start>-<end>`` (e.g. ``loss_bin0_t0-332``), where
+        ``<start>-<end>`` is the timestep range covered by the bin.
+
+    Output
+    ------
+    Saves ``<csv_name>_bins.png`` next to the CSV file and shows the figure with two panels:
+    1. Training loss per timestep bin (log scale, because the bins differ by orders
+       of magnitude).
+    2. Percentage change of each bin with respect to the first logged epoch, which
+       shows the relative improvement independently of the absolute scale.
+
+    Notes
+    -----
+    - The loss inside a bin still depends on the timestep within the bin (a wide
+      bin such as t in [0, 332] contains very different loss levels). If a curve is
+      still noisy, rerun the training with more bins (``N_BINS``).
+    - The reference of panel 2 is the first logged epoch, i.e. the model after one
+      epoch of training, not the base SDXL model. The change is therefore
+      underestimated, and the first point is itself affected by sampling noise.
+    - The bin edges must be reported together with the plots, as they define what
+      "low", "medium" and "high" timesteps mean.
+    """
+
+    with open(csv_path) as f:
+        rows = list(csv.DictReader(f))
+    epochs = [int(r["epoch"]) for r in rows]
+    keys = [k for k in rows[0] if k.startswith("loss_bin")]
+
+    fig, axs = plt.subplots(1, 2, figsize=(14, 5))
+    for k in keys:
+        vals = np.array([float(r[k]) for r in rows])
+        label = k.split("_t")[1]
+        axs[0].plot(epochs, vals, marker='o', markersize=3, label=f"t={label}")
+        axs[1].plot(epochs, 100 * (vals - vals[0]) / vals[0], marker='o', markersize=3, label=f"t={label}")
+    axs[0].set_yscale("log")
+    axs[0].set_title("Train loss per fascia di timestep")
+    axs[1].set_title("Variazione rispetto all'epoca 1 (%)")
+    for ax in axs:
+        ax.set_xlabel("Epoch"); ax.grid(True, linestyle='--', alpha=0.7); ax.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.splitext(csv_path)[0] + "_bins.png", dpi=300)
+    plt.show()
+
+
 def plot_validation_metrics(csv_path):
     """
     Reads the validation CSV produced by validate_checkpoints.py and generates

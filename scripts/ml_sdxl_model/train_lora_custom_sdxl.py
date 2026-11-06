@@ -317,14 +317,23 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
         print("USE_CAPTIONS is True. Text Encoders will remain in memory for dynamic encoding.")
 
     print("Start Training...")
+    n_bins = 3
+    T = noise_scheduler.config.num_train_timesteps
+    bins_history = []
     loss_history = []
     loss_history_path = os.path.join(
         get_full_path(output_dir_model_ori),
         "loss_history.csv"
     )
+    bins_history_path = os.path.join(
+        get_full_path(output_dir_model_ori),
+        "loss_history_bins.csv"
+    )
 
     for epoch in range(num_epochs):
         epoch_loss = 0.0
+        bin_sum = torch.zeros(n_bins, device = device)
+        bin_cnt = torch.zeros(n_bins, device = device)
         unet.train()
         progress_bar = tqdm(dataloader, desc=f"Epoch {epoch+1}/{num_epochs}")
         optimizer.zero_grad()  
@@ -379,8 +388,13 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
                     added_cond_kwargs=added_cond_kwargs
                 ).sample
 
+                loss_per_sample = F.mse_loss(noise_pred.float(), noise.float(), reduction="none").mean(dim=(1, 2, 3))
                 loss = F.mse_loss(noise_pred.float(), noise.float(), reduction="mean")
                 loss = loss / gradient_accumulation_steps
+
+                bin_idx = torch.clamp(timesteps * n_bins // T, max=n_bins - 1)
+                bin_sum.index_add_(0, bin_idx, loss_per_sample.detach())
+                bin_cnt.index_add_(0, bin_idx, torch.ones_like(loss_per_sample))
 
             scaler.scale(loss).backward()
             epoch_loss += loss.item() * gradient_accumulation_steps
@@ -428,6 +442,7 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
 
 
         media_loss = epoch_loss / len(dataloader)
+        bin_loss = (bin_sum / bin_cnt.clamp(min=1)).cpu().tolist()
         #current_lr = lr_scheduler.get_last_lr()[0]
         current_lr = optimizer.param_groups[0]['lr']
 
@@ -472,6 +487,22 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
             )
             writer.writeheader()
             writer.writerows(loss_history)
+
+        bin_row = {"epoch": epoch + 1}
+        
+        for i, v in enumerate(bin_loss):
+            start = -(-i * T // n_bins)
+            end = -(-(i + 1) * T // n_bins) - 1
+            bin_row[f"loss_bin{i}_t{start}-{end}"] = v
+        bins_history.append(bin_row)
+
+        with open(bins_history_path, "w", newline="") as f:
+            writer = csv.DictWriter(
+                f, 
+                fieldnames=list(bin_row.keys())
+            )
+            writer.writeheader()
+            writer.writerows(bins_history) 
 
         print(f"Saving checkpoint Epoch {epoch+1}...")
         cartella_epoca = get_full_path(output_dir_weights_epoch, f"epoch_{epoch+1}")
