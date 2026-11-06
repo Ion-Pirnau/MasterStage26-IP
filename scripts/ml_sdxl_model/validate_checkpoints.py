@@ -1,22 +1,11 @@
 """
-Validazione dei checkpoint LoRA su heightmap NON viste in training.
+Validation of LoRA checkpoints on heightmaps unseen during training.
 
-Riusa i metodi del progetto (TerrainDataset, LatentTerrainDataset,
-precompute_latents_to_disk, encode_prompt_sdxl) e aggiunge solo:
-  1. il caricamento dei checkpoint epoch_N con PEFT;
-  2. il calcolo della loss con timestep e rumore FISSI (epoca 0 = SDXL base, LoRA disattivato);
-  3. la scrittura di validation_history.csv.
-
-Uso:
-    python validate_checkpoints.py \
-        --train-dir    <PNG del training (serve solo per global_min/global_max)> \
-        --val-dir      <PNG nuovi, mai usati nel training> \
-        --ckpt-dir     <cartella con epoch_1, epoch_2, ...> \
-        --out-dir      <cartella output> \
-        --captions-dir <caption .txt di validazione, stesso nome dei PNG>
-
-Se ometti --captions-dir si usa il prompt vuoto (training senza caption).
-Se in training hai usato il noise offset, passa lo stesso valore con --noise-offset.
+Reuses existing project methods (TerrainDataset, LatentTerrainDataset,
+precompute_latents_to_disk, encode_prompt_sdxl) and only introduces:
+  1. PEFT-based loading of epoch_N checkpoints;
+  2. Loss computation using FIXED timesteps and noise (epoch 0 = base SDXL, LoRA disabled);
+  3. Writing/logging to validation_history.csv.
 """
 
 import csv
@@ -38,7 +27,6 @@ from train_lora_custom_sdxl import (
     precompute_latents_to_disk,
     get_full_path,
     PATH_DATASET_GENERATED,
-    PATH_CAPTIONS_IMG,
     PATH_MODEL_SINGLE_EPOCH_WEIGHTS,
     PATH_MODEL_SDXL_ORI,
     CAPTIONS_ENABLED,
@@ -77,7 +65,9 @@ def find_checkpoints(ckpt_dir):
  
 @torch.no_grad()
 def evaluate(model, batches, scheduler, timesteps, device, size, seed, noise_offset):
-    """MSE sul rumore per timestep, con rumore deterministico (identico per ogni checkpoint)."""
+    """
+    MSE on noise per timestep, using deterministic noise (identical across checkpoints).
+    """
     model.eval()
     sums = {t: 0.0 for t in timesteps}
  
@@ -113,7 +103,7 @@ def evaluate(model, batches, scheduler, timesteps, device, size, seed, noise_off
 def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if device != "cuda":
-        raise RuntimeError("Serve una GPU CUDA (come nel training).")
+        raise RuntimeError("Requires a CUDA-capable GPU")
     os.makedirs(OUT_DIR, exist_ok=True)
  
     # --- range globale del TRAINING, letto dal tuo TerrainDataset ---
@@ -130,9 +120,9 @@ def main():
     val_ds = TerrainDataset(VAL_DIR, None, size=SIZE, use_captions=False)
     if val_ds.global_min < gmin or val_ds.global_max > gmax:
         print(
-            "ATTENZIONE: il validation set ha altezze fuori dal range del training "
+            "WARNING: The validation set heights are out of the training range "
             f"(val: {val_ds.global_min}..{val_ds.global_max}, train: {gmin}..{gmax}). "
-            "I valori fuori range finiscono fuori da [-1, 1]."
+            "Out-of-range values will fall outside of [-1, 1]."
         )
     # normalizzazione identica al training
     val_ds.global_min, val_ds.global_max = gmin, gmax
@@ -168,7 +158,7 @@ def main():
                 pe, pp = static_pe.repeat(bsz, 1, 1), static_pp.repeat(bsz, 1)
             batches.append((lat.cpu(), pe.cpu(), pp.cpu()))
     if USE_CAPTIONS:
-        print(f"Esempio caption: {latent_ds[0]['text']!r}")
+        print(f"Example caption: {latent_ds[0]['text']!r}")
  
     pipe.text_encoder.to("cpu")
     pipe.text_encoder_2.to("cpu")
@@ -178,7 +168,7 @@ def main():
     # --- checkpoint ---
     ckpts = find_checkpoints(CKPT_DIR)
     if not ckpts:
-        raise RuntimeError(f"Nessun checkpoint epoch_N trovato in {CKPT_DIR}")
+        raise RuntimeError(f"No epoch_N checkpoint found in {CKPT_DIR}")
     print(f"Checkpoint trovati: {[e for e, _ in ckpts]}")
  
     scheduler = DDPMScheduler.from_pretrained(SDXL_ID, subfolder="scheduler")
