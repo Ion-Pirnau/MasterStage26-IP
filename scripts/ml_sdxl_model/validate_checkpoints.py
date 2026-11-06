@@ -30,10 +30,9 @@ from train_lora_custom_sdxl import (
     PATH_MODEL_SINGLE_EPOCH_WEIGHTS,
     PATH_MODEL_SDXL_ORI,
     CAPTIONS_ENABLED,
+    PATH_CAPTIONS_VALIDATION,
+    PATH_DATASET_VALIDATION
 )
-
-PATH_DATASET_VALIDATION = "data/heightmaps/heightmap_png_val"
-PATH_CAPTIONS_VALIDATION = "data/heightmaps/captions_img_validation"
  
 SDXL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
  
@@ -205,8 +204,8 @@ def main():
         w.writerows(rows)
  
     best = min(rows[1:], key=lambda r: r["val_loss"])
-    print(f"\nMigliore: epoca {best['epoch']} con val_loss {best['val_loss']:.6f}")
-    print(f"CSV salvato in: {out_csv}")
+    print(f"\Best: epoch {best['epoch']} with val_loss {best['val_loss']:.6f}")
+    print(f"CSV saved in: {out_csv}")
  
  
 if __name__ == "__main__":

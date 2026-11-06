@@ -1,6 +1,7 @@
 import os, sys
 import torch
 import torch.nn.functional as F
+import numpy as np
 from torch.utils.data import DataLoader
 from diffusers import StableDiffusionXLPipeline, DDPMScheduler
 from transformers import get_cosine_schedule_with_warmup
@@ -17,8 +18,25 @@ print(diffusers.__version__)
 sys.path.append(os.path.dirname(os.path.dirname(__file__))) 
 
 from utils.utils_method import get_full_path
-from utils.constants import PATH_DATASET_GENERATED, PATH_MODEL_WEIGHTS, PATH_MODEL_SINGLE_EPOCH_WEIGHTS, PATH_MODEL_SDXL_ORI, PATH_CAPTIONS_IMG, CAPTIONS_ENABLED
-from utils.utils_ml import test_sdxl_conditioning, test_sdxl_time_ids, test_sdxl_unet_forward, test_vae_reconstruction, TerrainDataset, LatentTerrainDataset
+from utils.constants import (
+    PATH_DATASET_GENERATED, 
+    PATH_MODEL_WEIGHTS, 
+    PATH_MODEL_SINGLE_EPOCH_WEIGHTS, 
+    PATH_MODEL_SDXL_ORI, 
+    PATH_CAPTIONS_IMG, 
+    CAPTIONS_ENABLED,
+    PATH_CAPTIONS_VALIDATION,
+    PATH_DATASET_VALIDATION
+    )
+
+from utils.utils_ml import (
+    test_sdxl_conditioning, 
+    test_sdxl_time_ids, 
+    test_sdxl_unet_forward, 
+    test_vae_reconstruction, 
+    TerrainDataset, 
+    LatentTerrainDataset
+    )
 
 @dataclass
 class TrainingConfig:
@@ -330,6 +348,17 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
         "loss_history_bins.csv"
     )
 
+    VAL_PROMPTS = [
+        "heightmap terrain, erosion, medium frequency, very low depth, mountains, medium height, "
+        "medium steepness, low width, alluvial fan, very high length, very low angle, very low height",
+        "heightmap terrain, craters, very high spacing, very low density, high height, mountains, high "
+        "height, very low steepness, very high width, alluvial fan, medium length, high angle, very high height",
+        "heightmap terrain, craters, low spacing, high density, medium height, mountains, very low height, "
+        "very high steepness, very low width, alluvial fan, very low length, high angle, medium height",
+    ]
+
+    VAL_SEEDS = [42, 123]
+
     for epoch in range(num_epochs):
         epoch_loss = 0.0
         bin_sum = torch.zeros(n_bins, device = device)
@@ -512,77 +541,64 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
         if (epoch + 1) % 5 == 0 or epoch == 0:
             print(f"\n--- Validation Image Generation (Epoch {epoch+1}) ---")
             unet.eval()
-
-            if use_captions:
-                val_prompt = "heightmap terrain, erosion, medium frequency, very low depth, mountains, medium height, " \
-                "medium steepness, low width, alluvial fan, very high length, very low angle, very low height" 
-                val_guidance = 6.0
-            else:
-                val_prompt = ""
-                val_guidance = 1.0
-
             pipe.unet = unet
-            val_generator = torch.Generator(device=device).manual_seed(42)
 
-            print("Generating validation latents...")
+            val_guidance = 6.0 if use_captions else 1.0
+            prompts = VAL_PROMPTS if use_captions else [""]
+
+            generated = []
+            
             with torch.no_grad():
                 with torch.amp.autocast('cuda', dtype=torch.float16):
-                    output = pipe(
-                        prompt=val_prompt,
-                        negative_prompt="color, photorealistic, 3d render, water, trees",
-                        num_inference_steps=30,
-                        guidance_scale=val_guidance,
-                        original_size=(1024, 1024),
-                        target_size=(1024, 1024),
-                        generator=val_generator,
-                        output_type="latent"
-                    )
-                    val_latents = output.images[0] if isinstance(output.images, list) else output.images
+                    for p_idx, prompt in enumerate(prompts):
+                        for seed in VAL_SEEDS:
+                            val_generator = torch.Generator(device=device).manual_seed(seed)
+                            
+                            output = pipe(
+                                prompt=prompt,
+                                negative_prompt="color, photorealistic, 3d render, water, trees",
+                                num_inference_steps=30,
+                                guidance_scale=val_guidance,
+                                original_size=(1024, 1024),
+                                target_size=(1024, 1024),
+                                generator=val_generator,
+                                output_type="latent"
+                            )
 
-            print("Temporarily loading VAE into VRAM for validation...")
+                            lat = output.images[0] if isinstance(output.images, list) else output.images
+                            generated.append((p_idx, seed, lat))
+
             from diffusers import AutoencoderKL
             from PIL import Image
 
             temp_vae = AutoencoderKL.from_pretrained(
-                "madebyollin/sdxl-vae-fp16-fix", 
+                "stabilityai/stable-diffusion-xl-base-1.0",
+                subfolder="vae", 
                 torch_dtype=torch.float32
             ).to(device)
             temp_vae.enable_tiling()
 
-            print("Decoding latents to image...")
-            with torch.no_grad():
-                # I latenti generati dalla pipeline vanno riscalati prima di passarli al VAE
-                scaled_latents = val_latents / temp_vae.config.scaling_factor
-                
-                # Il VAE richiede float32 per evitare artefatti neri
-                scaled_latents = scaled_latents.to(device, dtype=torch.float32)
-                
-                # Decodifica dei latenti
-                decoded_images = temp_vae.decode(scaled_latents).sample
-                
-                # Conversione del tensore in una normale immagine PIL
-                decoded_images = (decoded_images / 2 + 0.5).clamp(0, 1)
-                decoded_images = decoded_images.cpu().permute(0, 2, 3, 1).float().numpy()
-                val_image = Image.fromarray((decoded_images[0] * 255).astype("uint8"))
+            visual_output_dir = get_full_path(output_dir_weights_epoch, "training_progress_images")
+            os.makedirs(visual_output_dir, exist_ok=True)
 
-            # Pulizia immediata della VRAM
+            with torch.no_grad():
+                for p_idx, seed, lat in generated:
+                    scaled = (lat / temp_vae.config.scaling_factor).to(device, dtype=torch.float32)
+                    decoded = temp_vae.decode(scaled).sample
+                    decoded = (decoded / 2 + 0.5).clamp(0, 1)
+                    decoded = decoded.cpu().permute(0, 2, 3, 1).float().numpy()
+                    gray = decoded[0].mean(axis=-1)
+                    val_image = Image.fromarray(np.round(gray * 65535.0).astype(np.uint16))
+                    val_path = get_full_path(visual_output_dir, f"sample_epoch_{epoch+1:03d}.png")
+                    val_image.save(val_path)
+                    print(f"Image saved in: {val_path}")
+
             del temp_vae
             torch.cuda.empty_cache()
             print("VAE removed from VRAM. Memory cleared to resume training.")
 
-            visual_output_dir = get_full_path(output_dir_weights_epoch, "training_progress_images")
-            os.makedirs(visual_output_dir, exist_ok=True)
-
-            val_image_gray = val_image.convert('L')
-            val_path = get_full_path(visual_output_dir, f"sample_epoch_{epoch+1:03d}.png")
-            val_image_gray.save(val_path)
-
-            print(f"Image saved in: {val_path}")
-
             unet.train()
             print("--- Continue Training ---\n")
-
-
 
     print("Saving the final model...")
     cartella_model_final = get_full_path(output_dir_model)
