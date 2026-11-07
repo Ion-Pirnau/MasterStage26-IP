@@ -23,10 +23,10 @@ if __name__ == "__main__":
             "validation_history.csv"
         )
 
-    plot_training_metrics(csv_path=loss_history_path)
+    #plot_training_metrics(csv_path=loss_history_path)
 
     #plot_loss_by_timestep_bin(csv_path=loss_bin_path)
 
-    #plot_validation_metrics(csv_path=loss_validation_path)
+    plot_validation_metrics(csv_path=loss_validation_path)
 
 

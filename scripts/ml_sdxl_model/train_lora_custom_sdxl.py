@@ -589,7 +589,7 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
                     decoded = decoded.cpu().permute(0, 2, 3, 1).float().numpy()
                     gray = decoded[0].mean(axis=-1)
                     val_image = Image.fromarray(np.round(gray * 65535.0).astype(np.uint16))
-                    val_path = get_full_path(visual_output_dir, f"sample_epoch_{epoch+1:03d}.png")
+                    val_path = get_full_path(visual_output_dir, f"sample_epoch_{epoch+1:03d}_p{p_idx}_s{seed}.png")
                     val_image.save(val_path)
                     print(f"Image saved in: {val_path}")
 
