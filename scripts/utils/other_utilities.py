@@ -456,68 +456,190 @@ def plot_training_metrics(csv_path):
     plt.show()
 
 
-def plot_loss_by_timestep_bin(csv_path):
+def _read_csv(path):
+    with open(path, "r") as f:
+        return list(csv.DictReader(f))
 
+
+def _moving_average(values, window):
+    """Trailing moving average ('valid' mode). Returns None if it cannot be computed."""
+    if window <= 1 or len(values) < window:
+        return None
+    return np.convolve(values, np.ones(window) / window, mode="valid")
+
+
+def _percent_change(values, ref_epochs):
+    """Percentage change with respect to the mean of the first `ref_epochs` values."""
+    return 100.0 * (values / values[:ref_epochs].mean() - 1.0)
+
+
+def _relative_noise(values):
+    """High-frequency noise: std of consecutive differences / sqrt(2), as a % of the mean."""
+    return 100.0 * np.diff(values).std(ddof=1) / np.sqrt(2) / values.mean()
+
+
+def _trend(values, k):
+    """Mean of the last k values vs mean of the first k values, in %."""
+    return 100.0 * (values[-k:].mean() - values[:k].mean()) / values[:k].mean()
+
+
+def plot_loss_by_timestep_bin(csv_path, avg_csv_path=None, val_csv_path=None,
+                              ref_epochs=3, smooth_window=3):
     """
-    Plots the training loss separately for each timestep bin, to make the learning
-    signal visible despite the noise of the overall average loss.
+    Plots the training loss grouped by timestep bin and, optionally, compares it with
+    the overall average loss and with the validation loss regrouped on the same bins.
 
     Motivation
     ----------
     During training a timestep t in [0, 999] is drawn at random for every sample, and
-    the noise-prediction MSE depends strongly on t (it is large at low t and very small
-    at high t). The epoch-average loss therefore fluctuates with the random mix of
-    timesteps that was drawn, even if the model does not change. Averaging the loss
-    inside narrower timestep bins removes most of this dependency, so each curve is
-    smoother and a real improvement becomes easier to see.
+    the noise-prediction MSE depends strongly on t. The epoch-average loss therefore
+    mixes values of very different scale. Averaging the loss inside timestep bins
+    separates these scales, so the relative improvement of each bin can be followed
+    on its own.
 
     Parameters
     ----------
     csv_path : str
-        Path to the per-bin log written during training (``loss_history_bins.csv``).
-        Expected columns: ``epoch`` plus one column per bin, named
-        ``loss_bin<i>_t<start>-<end>`` (e.g. ``loss_bin0_t0-332``), where
-        ``<start>-<end>`` is the timestep range covered by the bin.
+        Per-bin training log (``loss_history_bins.csv``). Expected columns: ``epoch``
+        plus one column per bin named ``loss_bin<i>_t<start>-<end>`` (e.g.
+        ``loss_bin0_t0-333``), where ``<start>-<end>`` is the timestep range of the bin.
+    avg_csv_path : str, optional
+        Standard training log (``loss_history.csv``) with the ``average_loss`` column.
+        If given, the overall average loss is drawn as a gray dashed reference.
+    val_csv_path : str, optional
+        Validation log (``validation_history.csv``) with columns ``epoch`` and
+        ``val_t<timestep>``. The validation timesteps are assigned to the training bin
+        that contains them and averaged inside the bin. Epoch 0 (base model) is ignored.
+    ref_epochs : int
+        Number of initial epochs whose mean is used as the reference (0 %) of the
+        percentage panel, for the training and the validation curves alike.
+    smooth_window : int
+        Window, in epochs, of the trailing moving average drawn over the raw points.
 
     Output
     ------
-    Saves ``<csv_name>_bins.png`` next to the CSV file and shows the figure with two panels:
-    1. Training loss per timestep bin (log scale, because the bins differ by orders
-       of magnitude).
-    2. Percentage change of each bin with respect to the first logged epoch, which
-       shows the relative improvement independently of the absolute scale.
+    Saves ``<csv_name>_bins.png`` next to the CSV and shows a figure with two panels:
+    1. Training loss per bin (log scale, because the bins differ by orders of magnitude).
+    2. Percentage change per bin with respect to the mean of the first ``ref_epochs``
+       epochs: raw points (transparent), moving average (solid line) and, if provided,
+       validation (dashed line) and overall average loss (gray).
+    A summary table with the residual noise and the overall trend of every series is
+    also printed.
 
     Notes
     -----
-    - The loss inside a bin still depends on the timestep within the bin (a wide
-      bin such as t in [0, 332] contains very different loss levels). If a curve is
-      still noisy, rerun the training with more bins (``N_BINS``).
-    - The reference of panel 2 is the first logged epoch, i.e. the model after one
-      epoch of training, not the base SDXL model. The change is therefore
-      underestimated, and the first point is itself affected by sampling noise.
-    - The bin edges must be reported together with the plots, as they define what
-      "low", "medium" and "high" timesteps mean.
+    - The reference is the mean of the first epochs and not a single epoch: the first
+      epoch is a noisy point and it is averaged over weights that change a lot during
+      the epoch, so using it alone exaggerates the later improvement.
+    - The validation uses a few fixed timesteps, whereas a training bin averages over a
+      whole range of timesteps. Bins with a single validation timestep, or with
+      timesteps that are not spread over the range, are only an approximation:
+      compare trends, not absolute values.
+    - Training and validation are comparable only if they use the same noise offset
+      and, for the validation, the same weights of the same run.
+    - The noise in the summary is the std of consecutive differences divided by sqrt(2),
+      as a percentage of the series mean. It does not depend on the slow trend.
     """
+    rows = _read_csv(csv_path)
+    if len(rows) == 0:
+        print("The CSV file is empty.")
+        return
 
-    with open(csv_path) as f:
-        rows = list(csv.DictReader(f))
-    epochs = [int(r["epoch"]) for r in rows]
-    keys = [k for k in rows[0] if k.startswith("loss_bin")]
+    epochs = np.array([int(r["epoch"]) for r in rows])
+    ref_epochs = max(1, min(ref_epochs, len(epochs)))
 
-    fig, axs = plt.subplots(1, 2, figsize=(14, 5))
-    for k in keys:
-        vals = np.array([float(r[k]) for r in rows])
-        label = k.split("_t")[1]
-        axs[0].plot(epochs, vals, marker='o', markersize=3, label=f"t={label}")
-        axs[1].plot(epochs, 100 * (vals - vals[0]) / vals[0], marker='o', markersize=3, label=f"t={label}")
-    axs[0].set_yscale("log")
-    axs[0].set_title("Train loss per fascia di timestep")
-    axs[1].set_title("Variazione rispetto all'epoca 1 (%)")
-    for ax in axs:
-        ax.set_xlabel("Epoch"); ax.grid(True, linestyle='--', alpha=0.7); ax.legend()
+    # --- training bins, with their timestep range read from the column name ---
+    bins = []
+    for key in [k for k in rows[0] if k.startswith("loss_bin")]:
+        m = re.search(r"_t(\d+)-(\d+)$", key)
+        if m is None:
+            continue
+        bins.append({
+            "label": f"t={m.group(1)}-{m.group(2)}",
+            "start": int(m.group(1)),
+            "end": int(m.group(2)),
+            "values": np.array([float(r[key]) for r in rows]),
+        })
+    if len(bins) == 0:
+        print("No 'loss_bin...' columns found in the CSV.")
+        return
+
+    # --- optional overall average loss, aligned on the epochs ---
+    avg_values = None
+    if avg_csv_path and os.path.exists(avg_csv_path):
+        by_epoch = {int(r["epoch"]): float(r["average_loss"]) for r in _read_csv(avg_csv_path)}
+        if all(int(e) in by_epoch for e in epochs):
+            avg_values = np.array([by_epoch[int(e)] for e in epochs])
+        else:
+            print("The epochs of the average-loss CSV do not match: reference skipped.")
+
+    # --- optional validation, regrouped on the training bins ---
+    val_epochs, val_series = None, {}
+    if val_csv_path and os.path.exists(val_csv_path):
+        val_rows = [r for r in _read_csv(val_csv_path) if int(r["epoch"]) >= 1]
+        if val_rows:
+            val_epochs = np.array([int(r["epoch"]) for r in val_rows])
+            t_cols = {int(k[5:]): k for k in val_rows[0] if re.fullmatch(r"val_t\d+", k)}
+            for b in bins:
+                cols = [c for t, c in t_cols.items() if b["start"] <= t <= b["end"]]
+                if cols:
+                    val_series[b["label"]] = np.array(
+                        [np.mean([float(r[c]) for c in cols]) for r in val_rows]
+                    )
+                else:
+                    print(f"No validation timestep falls in the bin {b['label']}.")
+
+    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    fig, axs = plt.subplots(1, 1, figsize=(10, 7))
+
+
+    ax = axs
+    for i, b in enumerate(bins):
+        c = colors[i % len(colors)]
+        pct = _percent_change(b["values"], ref_epochs)
+        smooth = _moving_average(pct, smooth_window)
+        ax.plot(epochs, pct, marker='o', markersize=3, linewidth=1, color=c, alpha=0.3,
+                label=None if smooth is not None else f"{b['label']} (training)")
+        if smooth is not None:
+            ax.plot(epochs[smooth_window - 1:], smooth, color=c, linewidth=2.5,
+                    label=f"{b['label']} (training)")
+        if b["label"] in val_series:
+            v = val_series[b["label"]]
+            ax.plot(val_epochs, _percent_change(v, min(ref_epochs, len(v))), marker='s',
+                    markersize=4, linestyle='--', linewidth=1.5, color=c,
+                    label=f"{b['label']} (validazione)")
+    if avg_values is not None:
+        pct = _percent_change(avg_values, ref_epochs)
+        smooth = _moving_average(pct, smooth_window)
+        if smooth is not None:
+            ax.plot(epochs[smooth_window - 1:], smooth, color='gray', linestyle=':',
+                    linewidth=2.5, label="average_loss (training)")
+        else:
+            ax.plot(epochs, pct, color='gray', linestyle=':', linewidth=2, label="average_loss (training)")
+    ax.axhline(0.0, color='black', linewidth=0.8, alpha=0.5)
+    ax.set_title(f"Variazione rispetto alla media delle prime {ref_epochs} epoche (%)\n"
+                 f"(linea continua: media mobile su {smooth_window} epoche)")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Variazione (%)")
+    ax.grid(True, linestyle='--', alpha=0.7)
+    ax.legend(fontsize=8)
+
     plt.tight_layout()
-    plt.savefig(os.path.splitext(csv_path)[0] + "_bins.png", dpi=300)
+    output_png = os.path.splitext(csv_path)[0] + "_bins.png"
+    plt.savefig(output_png, dpi=300)
+    print(f"\nGraph saved: {output_png}")
+
+
+    print(f"\n{'Serie':<24}{'Rumore (%)':>12}{f'Ultime/prime {ref_epochs} ep. (%)':>26}")
+    series = [(b["label"], b["values"]) for b in bins]
+    if avg_values is not None:
+        series.insert(0, ("average_loss", avg_values))
+    if len(epochs) > ref_epochs:
+        for name, v in series:
+            print(f"{name:<24}{_relative_noise(v):>12.2f}{_trend(v, ref_epochs):>26.2f}")
+
     plt.show()
+
 
 
 def plot_validation_metrics(csv_path):
@@ -597,10 +719,7 @@ def plot_validation_metrics(csv_path):
  
     fig, axs = plt.subplots(2, 2, figsize=(16, 12))
     fig.suptitle("Validation on unseen heightmaps (fixed timesteps and noise)", fontsize=18, fontweight='bold')
- 
-    # ==========================================
-    # Graph 1: Validation loss (zoomed)
-    # ==========================================
+
     ax = axs[0, 0]
     ax.plot(epochs, val_loss, marker='s', color='tab:blue', linewidth=2, label='Validation loss')
     ax.axhline(ref_loss, color='gray', linestyle=':', label=f'{ref_label}: {ref_loss:.5f}')
@@ -612,10 +731,7 @@ def plot_validation_metrics(csv_path):
     ax.set_ylabel("MSE Loss")
     ax.grid(True, linestyle='--', alpha=0.7)
     ax.legend()
- 
-    # ==========================================
-    # Graph 2: Relative change vs reference
-    # ==========================================
+
     ax = axs[0, 1]
     ax.plot(epochs, rel_total, marker='o', color='tab:green', linewidth=2)
     ax.axhline(0.0, color='gray', linestyle=':')
@@ -623,10 +739,7 @@ def plot_validation_metrics(csv_path):
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Change (%)")
     ax.grid(True, linestyle='--', alpha=0.7)
- 
-    # ==========================================
-    # Graph 3: Relative change per timestep
-    # ==========================================
+
     ax = axs[1, 0]
     for k in t_keys:
         ax.plot(epochs, rel_change(t_values[k]), marker='o', markersize=4, label=f"t={k[5:]}")
@@ -638,9 +751,6 @@ def plot_validation_metrics(csv_path):
     if t_keys:
         ax.legend()
  
-    # ==========================================
-    # Graph 4: Absolute loss per timestep (log scale)
-    # ==========================================
     ax = axs[1, 1]
     for k in t_keys:
         ax.plot(epochs, t_values[k], marker='o', markersize=4, label=f"t={k[5:]}")
