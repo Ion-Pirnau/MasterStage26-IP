@@ -137,7 +137,7 @@ def main():
     # --- latenti + caption + embedding, calcolati una volta sola ---
     latent_ds = LatentTerrainDataset(latents_dir, VAL_CAPTIONS_DIR, use_captions=USE_CAPTIONS)
     loader = DataLoader(latent_ds, batch_size=BATCH_SIZE, shuffle=False)
-    print(f"Immagini di validazione: {len(latent_ds)} | caption: {USE_CAPTIONS}")
+    print(f"Validation Images: {len(latent_ds)} | caption: {USE_CAPTIONS}")
  
     te1 = pipe.text_encoder.to(device)
     te2 = pipe.text_encoder_2.to(device)
