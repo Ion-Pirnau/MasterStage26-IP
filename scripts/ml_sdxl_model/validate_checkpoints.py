@@ -105,7 +105,7 @@ def main():
         raise RuntimeError("Requires a CUDA-capable GPU")
     os.makedirs(OUT_DIR, exist_ok=True)
  
-    # --- range globale del TRAINING, letto dal tuo TerrainDataset ---
+    # --- range globale del TRAINING, letto dal TerrainDataset ---
     train_ds = TerrainDataset(TRAIN_DIR, None, size=SIZE, use_captions=False)
     gmin, gmax = train_ds.global_min, train_ds.global_max
     del train_ds
@@ -115,7 +115,7 @@ def main():
         SDXL_ID, torch_dtype=torch.float16, variant="fp16", use_safetensors=True
     )
  
-    # --- latenti di validazione, con i tuoi metodi ---
+    # --- latenti di validazione ---
     val_ds = TerrainDataset(VAL_DIR, None, size=SIZE, use_captions=False)
     if val_ds.global_min < gmin or val_ds.global_max > gmax:
         print(
