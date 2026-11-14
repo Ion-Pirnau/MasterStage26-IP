@@ -209,54 +209,44 @@ def geotiff_to_obj(tif_path, out_path, grid_size=10.0, downsample=1, xy_resoluti
 
 def converti_exr_a_png_16bit(cartella_sorgente, cartella_destinazione):
     file_convertiti = 0
-    print(f"Leggendo la cartella: {cartella_sorgente}")
+    print(f"Read from folder: {cartella_sorgente}")
     
     if not os.path.exists(cartella_destinazione):
         os.makedirs(cartella_destinazione)
-        
-    for nome_file in os.listdir(cartella_sorgente):
-        if nome_file.lower().endswith('.exr'):
-            percorso_exr = os.path.join(cartella_sorgente, nome_file)
-            
-            try:
-                # Usa ImageIO per leggere l'EXR (Non fallisce mai)
-                img_exr = iio.imread(percorso_exr)
-                
-                # Estrae il singolo canale (solitamente R) se è multicanale
-                if len(img_exr.shape) == 3:
-                    img_gray = img_exr[:, :, 0] 
-                else:
-                    img_gray = img_exr
 
-                print(f"\nFile: {nome_file}")
-                print("Shape:", img_gray.shape)
-                print("Dtype:", img_gray.dtype)
-                print("Min:", np.min(img_gray))
-                print("Max:", np.max(img_gray))
-                print("Mean:", np.mean(img_gray))
-                print("Std:", np.std(img_gray))
-                print("Percentile 1%:", np.percentile(img_gray, 1))
-                print("Percentile 99%:", np.percentile(img_gray, 99))
+    files_exr = [f for f in os.listdir(cartella_sorgente) if f.lower().endswith('.exr')]
+        
+    for nome_file in tqdm(files_exr, desc="Conversion EXR -> PNG", unit="file"):
+        percorso_exr = os.path.join(cartella_sorgente, nome_file)
+        try:
+            # Usa ImageIO per leggere l'EXR (Non fallisce mai)
+            img_exr = iio.imread(percorso_exr)
                 
-                # Taglia i valori sotto 0 e sopra 1 per sicurezza
-                img_clipped = np.clip(img_gray, 0.0, 1.0)
+            # Estrae il singolo canale (solitamente R) se è multicanale
+            if len(img_exr.shape) == 3:
+                img_gray = img_exr[:, :, 0] 
+            else:
+                img_gray = img_exr
                 
-                # Moltiplica per il massimo del 16-bit intero (65535)
-                img_16bit = (img_clipped * 65535.0).astype(np.uint16)
+            # Taglia i valori sotto 0 e sopra 1 per sicurezza
+            img_clipped = np.clip(img_gray, 0.0, 1.0)
                 
-                # Salvataggio in PNG a 16-bit usando ImageIO
-                nome_uscita = os.path.splitext(nome_file)[0] + ".png"
-                percorso_uscita = os.path.join(cartella_destinazione, nome_uscita)
+            # Moltiplica per il massimo del 16-bit intero (65535)
+            img_16bit = (img_clipped * 65535.0).astype(np.uint16)
                 
-                iio.imwrite(percorso_uscita, img_16bit)
+            # Salvataggio in PNG a 16-bit usando ImageIO
+            nome_uscita = os.path.splitext(nome_file)[0] + ".png"
+            percorso_uscita = os.path.join(cartella_destinazione, nome_uscita)
                 
-                print(f"Convertito in PNG 16-bit: {nome_uscita}")
-                file_convertiti += 1
+            iio.imwrite(percorso_uscita, img_16bit)
                 
-            except Exception as e:
-                print(f"ERRORE GRAVE con il file {nome_file}: {e}")
+            tqdm.write(f"Converted in PNG 16-bit: {nome_uscita}")
+            file_convertiti += 1
                 
-    print(f"Finito! File convertiti: {file_convertiti}")
+        except Exception as e:
+            tqdm.write(f"Error with {nome_file}: {e}")
+                
+    print(f"Finished! Total file converted: {file_convertiti}")
 
 def inspect_png(path):
     """
