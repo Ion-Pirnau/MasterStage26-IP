@@ -7,6 +7,7 @@ import torch.nn.functional as F
 import torch.nn as nn
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
+import re
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__))) 
 
@@ -286,17 +287,29 @@ class LatentTerrainDataset(Dataset):
     alongside their corresponding textual terrain descriptions, eliminating runtime 
     preprocessing overhead to maximize training throughput.
     """
-    def __init__(self, latents_dir, captions_dir, use_captions=True):
+    def __init__(self, latents_dir, captions_dir, use_captions=True, 
+                 file_list=None, max_items=None):
         self.latents_dir = latents_dir
         self.captions_dir = captions_dir
         self.use_captions = use_captions
-        
-        self.latent_files = sorted([
-            f for f in os.listdir(latents_dir) if f.endswith(".pt")
-        ])
+
+        if file_list is not None:
+            self.latent_files = [f"{name}.pt" for name in file_list]
+            missing = [f for f in self.latent_files
+                       if not os.path.exists(os.path.join(latents_dir, f))]
+
+            if missing:
+                raise RuntimeError(f"{len(missing)} latent files not found, e.g. {missing[:3]}")
+        else:
+            self.latent_files = sorted([
+                f for f in os.listdir(latents_dir) if f.endswith(".pt")
+            ])
+
+        if max_items is not None:
+            self.latent_files = self.latent_files[:max_items]
 
         if len(self.latent_files) == 0:
-            raise RuntimeError(f"Nessun file latente trovato in {latents_dir}")
+            raise RuntimeError(f"No Latent files found in {latents_dir}")
 
     def __len__(self):
         return len(self.latent_files)
@@ -316,12 +329,38 @@ class LatentTerrainDataset(Dataset):
                 with open(txt_path, "r", encoding="utf-8") as f:
                     prompt_text = f.read().strip()
             else:
-                prompt_text = "heightmap terrain"
+                raise FileNotFoundError(f"Caption not found for {latent_filename}: {txt_path}")
 
         return {
-            "latent": latent,  # Nota: si chiama 'latent', non 'image'
+            "latent": latent,
             "text": prompt_text
         }
+
+def natural_key(name):
+    """Sort key that compares the digit groups as numbers"""
+    return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", name)]
+
+def update_train_order(latents_dir, order_path, exclude=()):
+    """
+    Keeps the existing order (the first images never change) and appends the new
+    latents in sorted order.
+    `exclude` = base names that must never be used for training (validation images).
+    """
+    all_names = sorted((os.path.splitext(f)[0] for f in os.listdir(latents_dir) if f.endswith(".pt")),
+                   key=natural_key)
+    all_names = [n for n in all_names if n not in set(exclude)]
+
+    order = []
+    if os.path.exists(order_path):
+        with open(order_path, "r", encoding="utf-8") as f:
+            order = [line.strip() for line in f if line.strip()]
+
+    known = set(order)
+    order += sorted((n for n in all_names if n not in known), key=natural_key)
+
+    with open(order_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(order))
+    return order
 
 
 def test_sdxl_unet_forward(pipe, dataset_folder, device="cuda"):

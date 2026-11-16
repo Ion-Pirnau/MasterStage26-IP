@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import numpy as np
 from torch.utils.data import DataLoader
 from diffusers import StableDiffusionXLPipeline, DDPMScheduler
+from diffusers.optimization import get_scheduler
 from transformers import get_cosine_schedule_with_warmup
 from peft import LoraConfig, get_peft_model
 from tqdm import tqdm
@@ -35,7 +36,8 @@ from utils.utils_ml import (
     test_sdxl_unet_forward, 
     test_vae_reconstruction, 
     TerrainDataset, 
-    LatentTerrainDataset
+    LatentTerrainDataset,
+    update_train_order
     )
 
 @dataclass
@@ -61,45 +63,45 @@ class TrainingConfig:
     learning_rate: float = 1e-4
     num_epochs: int = 20
     num_img_to_use: Optional[int] = None
+    lr_scheduler: str = "cosine"
+    warmup_ratio: float = 0.05
 
 def precompute_latents_to_disk(original_dataset, vae, device, output_dir):
     """
-        Passes all images through the VAE only once and saves the latents to disk.
-        If the files already exist, skips the operation to save time!
+    Passes the images through the VAE once and saves the latents to disk.
+
+    Files that already exist are skipped one by one, so:
+    - an interrupted run resumes where it stopped;
+    - when the dataset grows (e.g. 2000 -> 5000 images), only the new images are encoded
+      and the latents already on disk are left untouched.
     """
     os.makedirs(output_dir, exist_ok=True)
-    
-    existing_files = [f for f in os.listdir(output_dir) if f.endswith(".pt")]
-    if len(existing_files) == len(original_dataset):
-        print(f"Latents have already been calculated ({len(existing_files)} files). Skipping caching!")
-        return
 
-    print("Starting latent caching... (This will only run once!)")
-    vae.eval()
-    
+    todo = []
     for i in range(len(original_dataset)):
-        # Estraiamo i dati dal vecchio dataset
-        sample = original_dataset[i]
-        img = sample["image"].unsqueeze(0).to(device, dtype=torch.float32) # Aggiunge la dimensione del batch (1, C, H, W)
-        
-        # Nome originale del file (senza estensione exr/png)
         img_path = original_dataset.image_path[i]
         base_name = os.path.splitext(os.path.basename(img_path))[0]
-        
+        save_path = os.path.join(output_dir, f"{base_name}.pt")
+        if not os.path.exists(save_path):
+            todo.append((i, save_path))
+
+    if not todo:
+        print(f"Latents have already been calculated ({len(original_dataset)} files). Skipping caching!")
+        return
+
+    print(f"Latent caching: {len(todo)} to encode, {len(original_dataset) - len(todo)} already on disk.")
+    vae.eval()
+
+    for i, save_path in tqdm(todo, desc="Caching latents", unit="img"):
+        sample = original_dataset[i]
+        img = sample["image"].unsqueeze(0).to(device, dtype=torch.float32)  # (1, C, H, W)
+
         with torch.no_grad():
-            # Codifica VAE e moltiplicazione per scaling_factor (esattamente come facevi nel loop!)
             latent = vae.encode(img).latent_dist.sample()
             latent = latent * vae.config.scaling_factor
-            
-            # Lo riportiamo alla CPU e rimuoviamo la dimensione batch finta
-            latent = latent.squeeze(0).cpu() 
-        
-        # Salviamo il tensore su disco
-        save_path = os.path.join(output_dir, f"{base_name}.pt")
+            latent = latent.squeeze(0).cpu()
+
         torch.save(latent, save_path)
-        
-        if (i+1) % 10 == 0:
-            print(f"Cached {i+1}/{len(original_dataset)} images...")
 
     print("Latent Caching completed!")
 
@@ -190,6 +192,7 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
     dataset_folder = PATH_DATASET_GENERATED
     output_dir_model = PATH_MODEL_WEIGHTS
     output_dir_model_ori = PATH_MODEL_SDXL_ORI
+    captions_img = PATH_CAPTIONS_IMG
     output_dir_weights_epoch = PATH_MODEL_SINGLE_EPOCH_WEIGHTS
     use_captions = CAPTIONS_ENABLED
 
@@ -213,16 +216,6 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
         variant="fp16",
         use_safetensors=True
     )
-
-    #test_vae_reconstruction(pipe, get_full_path(dataset_folder), device=device)
-    #inspect_dataset_image(get_full_path(PATH_DATASET_GENERATED))
-    #test_sdxl_conditioning(pipe, device="cuda")
-    #test_sdxl_time_ids(pipe, device="cuda")
-    #test_sdxl_unet_forward(pipe, get_full_path(dataset_folder), device="cuda")
-
-    #user_command = ""
-    #while user_command.strip().lower() != "continue":
-    #    user_command = input("\nType 'continue' to resume Method For Training or Press CTRL+C for exit: ")
 
     vae = pipe.vae.to(device, dtype=torch.float32)
     vae.enable_tiling()
@@ -295,7 +288,7 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
     latents_folder = get_full_path(dataset_folder + "_latents")
     original_dataset = TerrainDataset(
         get_full_path(dataset_folder), 
-        get_full_path(PATH_CAPTIONS_IMG), 
+        get_full_path(captions_img), 
         size=size_img_format, 
         use_captions=False)
 
@@ -309,15 +302,27 @@ def train_lora_custom(config: TrainingConfig = TrainingConfig()):
     torch.cuda.empty_cache()
     print("VAE removed from VRAM. Memory freed successfully!")
 
-    dataset = LatentTerrainDataset(latents_folder, get_full_path(PATH_CAPTIONS_IMG), use_captions=use_captions)
+    order = update_train_order(latents_dir=latents_folder, order_path=get_full_path(output_dir_model_ori, "train_order.txt"))
+
+    dataset = LatentTerrainDataset(latents_folder, get_full_path(captions_img), 
+                                   use_captions=use_captions, file_list=order,
+                                   max_items=num_img_to_use)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
+    allowed_schedulers = ("cosine", "constant_with_warmup")
+    if config.lr_scheduler not in allowed_schedulers:
+        raise ValueError(f"lr_scheduler must be one of {allowed_schedulers}, got '{config.lr_scheduler}'")
+
     max_train_steps = num_epochs * len(dataloader) // gradient_accumulation_steps
-    lr_scheduler = get_cosine_schedule_with_warmup(
+    lr_scheduler = get_scheduler(
+        config.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=int(max_train_steps * 0.05),  
+        num_warmup_steps=int(max_train_steps * config.warmup_ratio),  
         num_training_steps=max_train_steps
     )
+
+    print(f"LR scheduler: {config.lr_scheduler} | warm-up steps: {int(max_train_steps * config.warmup_ratio)} "
+      f"| total steps: {max_train_steps}")
 
     if not use_captions:
         print("USE_CAPTIONS is False. Pre-calculating empty prompt embeddings...")

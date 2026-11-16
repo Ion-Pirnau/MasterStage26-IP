@@ -8,22 +8,24 @@ from utils.constants import PATH_MODEL_SDXL_ORI
 
 
 if __name__ == "__main__":
+    folder_to_choose = '20epoch_2000img'
+
     loss_history_path = os.path.join(
-            get_full_path(PATH_MODEL_SDXL_ORI),
+            get_full_path(PATH_MODEL_SDXL_ORI, folder_to_choose),
             "loss_history.csv"
         )
 
     loss_bin_path = os.path.join(
-                get_full_path(PATH_MODEL_SDXL_ORI),
+                get_full_path(PATH_MODEL_SDXL_ORI, folder_to_choose),
                 "loss_history_bins.csv"
     )
 
     loss_validation_path = os.path.join(
-            get_full_path(PATH_MODEL_SDXL_ORI),
+            get_full_path(PATH_MODEL_SDXL_ORI, folder_to_choose),
             "validation_history.csv"
         )
 
-    plot_training_metrics(csv_path=loss_history_path)
+    #plot_training_metrics(csv_path=loss_history_path)
 
     #plot_loss_by_timestep_bin(csv_path=loss_bin_path, val_csv_path=loss_validation_path, avg_csv_path=loss_history_path)
 
