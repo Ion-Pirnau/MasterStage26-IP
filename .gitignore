@@ -4,6 +4,7 @@ __pycache__/
 .vscode
 data/heightmaps
 data/meshes
+data/viewer_blend
 data/tiff_to_convert
 data/sdxl_model
 data/model_weights

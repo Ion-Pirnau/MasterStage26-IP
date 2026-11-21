@@ -5,7 +5,9 @@ BLENDER_EXECUTABLE = "C:\\Program Files\\Blender Foundation\\Blender 4.2\\blende
 
 # PATH CONSTANTS
 BLEND_FILE = get_full_path("terrain_generator", "terreno_procedurale_tesi_features.blend")
+BLEND_FILE_VIEWER = get_full_path("terrain_generator", "view_heightmap.blend")
 BLENDER_SCRIPT = get_full_path("scripts", "generator", "blender_generator.py")
+BLENDER_SCRIPT_CONVERTER = get_full_path("scripts", "generator", "blender_visualizer.py")
 CONFIG_FILE = get_full_path("terrain_generator", "dataset_setting.json")
 HEIGHTMAPS_EXR_LOCATION = get_full_path("data", "heightmaps", "heightmap_exr")
 HEIGHTMAPS_PNG_LOCATION = get_full_path("data", "heightmaps", "heightmap_png")
@@ -83,6 +85,10 @@ EXTENSION_HILLSHADE = "PNG"
 COLOR_MODE_HILLSHADE = "BW"
 RESOLUTION_XY = 1024
 
+
+# FOR BLENDER VIEWER AND BLENDER CONVERSION
+VIEWER_BLEND_IMG_IN = get_full_path("data", "viewer_blend")
+VIEWER_BLEND_IMG_OUT = get_full_path("data", "viewer_blend")
 
 # FOR STABLE DIFFUSION MODEL XL
 PATH_FOLDER_SDXL = "data/renders/sdxl_img"
