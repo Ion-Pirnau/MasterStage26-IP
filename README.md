@@ -63,6 +63,9 @@ project/
 │   ├── ml_gan_model/
 │   ├── ml_sdxl_model/
 │   ├── utils/
+│   ├── main_dataset_optimization.py  # Dataset optimization, create an useful set by using ML algorithms with feature analysis
+│   ├── dashboard_graph.py            # Rendering graph images for analysis of SDXL training with LoRa
+│   ├── main_png_to_3d.py             # Rendering pipeline from png (heightmaps) to OBJ, TIFF and OFF files
 │   ├── main.py                       # Rendering pipeline
 │   ├── main_convert_utls.py          # Conversions between file types
 │   ├── main_convert_tiff_obj.py      # GeoTIFF -> triangular mesh from regular grid
