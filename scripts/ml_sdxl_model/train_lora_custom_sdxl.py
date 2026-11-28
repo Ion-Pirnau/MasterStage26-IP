@@ -1,55 +1,209 @@
 import os, sys
 import torch
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
-from PIL import Image
+import numpy as np
+from torch.utils.data import DataLoader
 from diffusers import StableDiffusionXLPipeline, DDPMScheduler
+from diffusers.optimization import get_scheduler
 from transformers import get_cosine_schedule_with_warmup
-from diffusers.utils import convert_all_state_dict_to_peft
-from peft import LoraConfig, get_peft_model, get_peft_model_state_dict
+from peft import LoraConfig, get_peft_model
 from tqdm import tqdm
 import bitsandbytes as bnb
+from typing import Optional
+from dataclasses import dataclass
+import diffusers
+import csv
+
+print(diffusers.__version__)
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__))) 
 
 from utils.utils_method import get_full_path
-from utils.constants import PATH_FOLDER_SDXL, PATH_DATASET_GENERATED, PATH_MODEL_WEIGHTS, PATH_MODEL_SINGLE_EPOCH_WEIGHTS
+from utils.constants import (
+    PATH_DATASET_GENERATED, 
+    PATH_MODEL_WEIGHTS, 
+    PATH_MODEL_SINGLE_EPOCH_WEIGHTS, 
+    PATH_MODEL_SDXL_ORI, 
+    PATH_CAPTIONS_IMG, 
+    CAPTIONS_ENABLED,
+    PATH_CAPTIONS_VALIDATION,
+    PATH_DATASET_VALIDATION
+    )
 
-class TerrainDataset(Dataset):
+from utils.utils_ml import (
+    test_sdxl_conditioning, 
+    test_sdxl_time_ids, 
+    test_sdxl_unet_forward, 
+    test_vae_reconstruction, 
+    TerrainDataset, 
+    LatentTerrainDataset,
+    update_train_order
+    )
 
-    image_path = None
-    transform = None
-    dummy_prompt = None
+@dataclass
+class TrainingConfig:
+    """
+    Configuration parameters for the custom Stable Diffusion XL LoRA fine-tuning.
+    
+    Attributes:
+        batch_size (int): Number of training examples utilized in one iteration. 
+            Default is 1.
+        gradient_accumulation_steps (int): Number of steps to accumulate gradients 
+            before performing a backward/update pass. Used to simulate a larger batch size. 
+            Default is 4.
+        learning_rate (float): The initial learning rate for the optimizer. 
+            Default is 5e-5.
+        num_epochs (int): Total number of training epochs to perform. 
+            Default is 27.
+        num_img_to_use (int): The maximum number of images from the dataset 
+            to be used during this training run. Default is 50.
+    """
+    batch_size: int = 1
+    gradient_accumulation_steps: int = 4
+    learning_rate: float = 1e-4
+    num_epochs: int = 20
+    num_img_to_use: Optional[int] = None
+    lr_scheduler: str = "cosine"
+    warmup_ratio: float = 0.05
 
-    def __init__(self, image_dir, size=1024):
-        self.image_path = [os.path.join(image_dir, f) for f in os.listdir(image_dir) 
-                           if f.endswith(('.png', '.jpg'))]
-        self.transform = transforms.Compose([
-            transforms.Resize((size, size), interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5])
-        ])
+def precompute_latents_to_disk(original_dataset, vae, device, output_dir):
+    """
+    Passes the images through the VAE once and saves the latents to disk.
 
-        self.dummy_prompt = ""
+    Files that already exist are skipped one by one, so:
+    - an interrupted run resumes where it stopped;
+    - when the dataset grows (e.g. 2000 -> 5000 images), only the new images are encoded
+      and the latents already on disk are left untouched.
+    """
+    os.makedirs(output_dir, exist_ok=True)
 
-    def __len__(self):
-        return len(self.image_path)
+    todo = []
+    for i in range(len(original_dataset)):
+        img_path = original_dataset.image_path[i]
+        base_name = os.path.splitext(os.path.basename(img_path))[0]
+        save_path = os.path.join(output_dir, f"{base_name}.pt")
+        if not os.path.exists(save_path):
+            todo.append((i, save_path))
 
-    def __getitem__(self, index):
-        img = Image.open(self.image_path[index]).convert("RGB")
-        return {"image": self.transform(img), "text": self.dummy_prompt}
+    if not todo:
+        print(f"Latents have already been calculated ({len(original_dataset)} files). Skipping caching!")
+        return
+
+    print(f"Latent caching: {len(todo)} to encode, {len(original_dataset) - len(todo)} already on disk.")
+    vae.eval()
+
+    for i, save_path in tqdm(todo, desc="Caching latents", unit="img"):
+        sample = original_dataset[i]
+        img = sample["image"].unsqueeze(0).to(device, dtype=torch.float32)  # (1, C, H, W)
+
+        with torch.no_grad():
+            latent = vae.encode(img).latent_dist.sample()
+            latent = latent * vae.config.scaling_factor
+            latent = latent.squeeze(0).cpu()
+
+        torch.save(latent, save_path)
+
+    print("Latent Caching completed!")
 
 
-def train_lora_custom():
+def encode_prompt_sdxl(batch_texts, tokenizers, text_encoders, device):
+    """
+    Encodes a batch of text prompts using the dual tokenizers and text encoders of SDXL.
+
+    This function tokenizes the input text using two separate CLIP tokenizers, 
+    passes the token IDs through their respective text encoders, extracts the 
+    penultimate hidden states, and concatenates them to form the final prompt 
+    embeddings. It also extracts the pooled text embeddings from the second encoder.
+
+    Parameters
+    ----------
+    batch_texts : list of str
+        A list of text prompts to be encoded.
+    tokenizers : tuple or list
+        A collection containing the two SDXL tokenizers (typically CLIPTokenizer 
+        and CLIPTokenizerFast/OpenCLIPTokenizer).
+    text_encoders : tuple or list
+        A collection containing the two SDXL text encoders (typically CLIPTextModel 
+        and CLIPTextModelWithProjection).
+    device : torch.device or str
+        The target device (e.g., 'cuda' or 'cpu') where tensors should be allocated.
+
+    Returns
+    -------
+    prompt_embeds : torch.Tensor
+        The concatenated hidden states from both text encoders, extracted from 
+        the penultimate layer (-2). Shape: (batch_size, sequence_length, hidden_dim_1 + hidden_dim_2).
+    pooled_prompt_embeds : torch.Tensor
+        The pooled text embeddings from the second text encoder, used for SDXL 
+        time embeddings. Shape: (batch_size, pooled_dim).
+
+    Notes
+    -----
+    - Input texts are automatically padded and truncated to a maximum length of 77 tokens.
+    - Hidden states are extracted from the penultimate layer (`hidden_states[-2]`) 
+      following standard Stable Diffusion XL practices.
+    """
+     
+    tok1, tok2 = tokenizers
+    te1, te2 = text_encoders
+
+    txt_in_1 = tok1(batch_texts, padding="max_length", max_length=77, truncation=True, return_tensors="pt").to(device)
+    txt_in_2 = tok2(batch_texts, padding="max_length", max_length=77, truncation=True, return_tensors="pt").to(device)
+    
+    out_1 = te1(txt_in_1.input_ids, output_hidden_states=True)
+    out_2 = te2(txt_in_2.input_ids, output_hidden_states=True)
+    
+    static_prompt_embeds_1 = out_1.hidden_states[-2]
+    static_prompt_embeds_2 = out_2.hidden_states[-2]
+    prompt_embeds = torch.cat([static_prompt_embeds_1, static_prompt_embeds_2], dim=-1)
+    
+    pooled_prompt_embeds = out_2.text_embeds if hasattr(out_2, "text_embeds") else out_2.pooler_output
+
+    return prompt_embeds, pooled_prompt_embeds
+
+
+def train_lora_custom(config: TrainingConfig = TrainingConfig()):
+
+    """
+    Fine-tunes the UNet of Stable Diffusion XL using LoRA on the
+    generated terrain dataset.
+
+    The training procedure:
+    - loads the SDXL base pipeline and its VAE, UNet, and text encoders;
+    - freezes the original model parameters;
+    - injects LoRA adapters into the UNet attention layers;
+    - precomputes the text embeddings for the empty prompt;
+    - encodes the training images into the latent space using the VAE;
+    - adds random noise according to the diffusion noise scheduler;
+    - trains only the LoRA parameters to predict the added noise;
+    - applies gradient scaling, gradient clipping, and a cosine learning-rate
+      scheduler;
+    - saves the LoRA adapter weights after each epoch and at the end of training.
+
+    The function uses the same preprocessing and latent representation
+    employed during training and is designed to fine-tune the model while
+    keeping the original SDXL weights frozen.
+
+    Returns:
+        None. The trained LoRA adapter weights are saved to the configured
+        output directories.
+    """
+
     dataset_folder = PATH_DATASET_GENERATED
     output_dir_model = PATH_MODEL_WEIGHTS
+    output_dir_model_ori = PATH_MODEL_SDXL_ORI
+    captions_img = PATH_CAPTIONS_IMG
     output_dir_weights_epoch = PATH_MODEL_SINGLE_EPOCH_WEIGHTS
+    use_captions = CAPTIONS_ENABLED
 
-    batch_size = 1
-    gradient_accumulation_steps = 1
-    learning_rate = 1e-4
-    num_epochs = 10
+    batch_size = config.batch_size
+    gradient_accumulation_steps = config.gradient_accumulation_steps
+    #1e-4
+    learning_rate = config.learning_rate
+    #27
+    num_epochs = config.num_epochs
+    num_img_to_use = config.num_img_to_use
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     os.makedirs(get_full_path(output_dir_model), exist_ok=True)
@@ -64,7 +218,9 @@ def train_lora_custom():
     )
 
     vae = pipe.vae.to(device, dtype=torch.float32)
-    unet = pipe.unet.to(device, dtype=torch.float8_e4m3fn)
+    vae.enable_tiling()
+    unet = pipe.unet.to(device, dtype=torch.float16)
+    unet.enable_gradient_checkpointing()
     text_encoder_1 = pipe.text_encoder.to(device)
     text_encoder_2 = pipe.text_encoder_2.to(device)
     tokenizer_1 = pipe.tokenizer
@@ -76,8 +232,15 @@ def train_lora_custom():
     text_encoder_2.requires_grad_(False)
     unet.requires_grad_(False)
 
-
     unet.enable_gradient_checkpointing()
+
+    print("\n===== DIFFUSION SCHEDULER CHECK =====")
+    print("Scheduler:", type(noise_scheduler).__name__)
+    print("Prediction type:", noise_scheduler.config.prediction_type)
+    print("Num train timesteps:", noise_scheduler.config.num_train_timesteps)
+    print("Beta start:", noise_scheduler.config.beta_start)
+    print("Beta end:", noise_scheduler.config.beta_end)
+    print("===== END DIFFUSION SCHEDULER CHECK =====")
 
     print("Injection LoRA modules in the UNet...")
 
@@ -87,6 +250,12 @@ def train_lora_custom():
         target_modules=["to_q", "to_k", "to_v", "to_out.0"],
     )
     unet = get_peft_model(unet, lora_config)
+
+    for param in unet.parameters():
+        if param.requires_grad:
+            param.data = param.data.to(torch.float32)
+
+
     unet.print_trainable_parameters()
 
     initial_lora = {}
@@ -110,79 +279,142 @@ def train_lora_custom():
         )
     print("\n===== END PEFT CHECK =====")
 
-    #optimizer = torch.optim.AdamW(unet.parameters(), lr=learning_rate, weight_decay=1e-2)
     trainable_parameters = [p for p in unet.parameters() if p.requires_grad]
     optimizer = bnb.optim.AdamW8bit(trainable_parameters, lr=learning_rate, weight_decay=1e-2)
+
     scaler = torch.amp.GradScaler('cuda')
-  
-    dataset = TerrainDataset(get_full_path(dataset_folder))
+
+    size_img_format = 1024
+    latents_folder = get_full_path(dataset_folder + "_latents")
+    original_dataset = TerrainDataset(
+        get_full_path(dataset_folder), 
+        get_full_path(captions_img), 
+        size=size_img_format, 
+        use_captions=False)
+
+    precompute_latents_to_disk(original_dataset, vae, device, latents_folder)
+    
+    original_dataset.image_path = original_dataset.image_path[:num_img_to_use]
+
+    del vae
+    del original_dataset
+    pipe.vae = None
+    torch.cuda.empty_cache()
+    print("VAE removed from VRAM. Memory freed successfully!")
+
+    order = update_train_order(latents_dir=latents_folder, order_path=get_full_path(output_dir_model_ori, "train_order.txt"))
+
+    dataset = LatentTerrainDataset(latents_folder, get_full_path(captions_img), 
+                                   use_captions=use_captions, file_list=order,
+                                   max_items=num_img_to_use)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
+    allowed_schedulers = ("cosine", "constant_with_warmup")
+    if config.lr_scheduler not in allowed_schedulers:
+        raise ValueError(f"lr_scheduler must be one of {allowed_schedulers}, got '{config.lr_scheduler}'")
+
     max_train_steps = num_epochs * len(dataloader) // gradient_accumulation_steps
-    lr_scheduler = get_cosine_schedule_with_warmup(
+    lr_scheduler = get_scheduler(
+        config.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=int(max_train_steps * 0.05),  
+        num_warmup_steps=int(max_train_steps * config.warmup_ratio),  
         num_training_steps=max_train_steps
     )
 
-    print("Pre-calculation of text's embedding...")
-    with torch.no_grad():
-        dummy_text = [""]
-        txt_in_1 = tokenizer_1(dummy_text, padding="max_length", max_length=77, truncation=True, return_tensors="pt").to(device)
-        txt_in_2 = tokenizer_2(dummy_text, padding="max_length", max_length=77, truncation=True, return_tensors="pt").to(device)
-        
-        out_1 = text_encoder_1(txt_in_1.input_ids, output_hidden_states=True)
-        out_2 = text_encoder_2(txt_in_2.input_ids, output_hidden_states=True)
-        
-        static_prompt_embeds_1 = out_1.hidden_states[-2]
-        static_prompt_embeds_2 = out_2.hidden_states[-2]
-        static_prompt_embeds = torch.cat([static_prompt_embeds_1, static_prompt_embeds_2], dim=-1)
-        
-        static_pooled_embeds = out_2.text_embeds if hasattr(out_2, "text_embeds") else out_2.pooler_output
+    print(f"LR scheduler: {config.lr_scheduler} | warm-up steps: {int(max_train_steps * config.warmup_ratio)} "
+      f"| total steps: {max_train_steps}")
 
+    if not use_captions:
+        print("USE_CAPTIONS is False. Pre-calculating empty prompt embeddings...")
+        with torch.no_grad():
+            dummy_text = [""] # Testo vuoto
+            static_prompt_embeds, static_pooled_embeds = encode_prompt_sdxl(
+                dummy_text, 
+                (tokenizer_1, tokenizer_2), 
+                (text_encoder_1, text_encoder_2), 
+                device
+            )
+            del text_encoder_1, text_encoder_2, tokenizer_1, tokenizer_2
+            torch.cuda.empty_cache()
+    else:
+        print("USE_CAPTIONS is True. Text Encoders will remain in memory for dynamic encoding.")
 
     print("Start Training...")
-    unet.train()
-    global_step = 0
+    n_bins = 3
+    T = noise_scheduler.config.num_train_timesteps
+    bins_history = []
+    loss_history = []
+    loss_history_path = os.path.join(
+        get_full_path(output_dir_model_ori),
+        "loss_history.csv"
+    )
+    bins_history_path = os.path.join(
+        get_full_path(output_dir_model_ori),
+        "loss_history_bins.csv"
+    )
+
+    VAL_PROMPTS = [
+        "heightmap terrain, erosion, medium frequency, very low depth, mountains, medium height, "
+        "medium steepness, low width, alluvial fan, very high length, very low angle, very low height",
+        "heightmap terrain, craters, very high spacing, very low density, high height, mountains, high "
+        "height, very low steepness, very high width, alluvial fan, medium length, high angle, very high height",
+        "heightmap terrain, craters, low spacing, high density, medium height, mountains, very low height, "
+        "very high steepness, very low width, alluvial fan, very low length, high angle, medium height",
+    ]
+
+    VAL_SEEDS = [42, 123]
 
     for epoch in range(num_epochs):
         epoch_loss = 0.0
+        bin_sum = torch.zeros(n_bins, device = device)
+        bin_cnt = torch.zeros(n_bins, device = device)
+        unet.train()
         progress_bar = tqdm(dataloader, desc=f"Epoch {epoch+1}/{num_epochs}")
         optimizer.zero_grad()  
         
         for step, batch in enumerate(progress_bar):
-            images = batch["image"].to(device, dtype=torch.float32)
-            bsz = images.shape[0]
+            latents = batch["latent"].to(device, dtype=torch.float32)
+            #images = batch["image"].to(device, dtype=torch.float32)
+            bsz = latents.shape[0]
 
             with torch.no_grad():
-                latents = vae.encode(images).latent_dist.sample()
-                latents = (latents * vae.config.scaling_factor).to(dtype=torch.float16)
 
-            noise = torch.randn_like(latents) # Rumore casuale puro
+                if use_captions:
+                    texts = batch["text"]
+                    prompt_embeds, pooled_prompt_embeds = encode_prompt_sdxl(
+                        texts, 
+                        (tokenizer_1, tokenizer_2), 
+                        (text_encoder_1, text_encoder_2), 
+                        device
+                    )
+                else:
+                    prompt_embeds = static_prompt_embeds.repeat(bsz, 1, 1)
+                    pooled_prompt_embeds = static_pooled_embeds.repeat(bsz, 1)
+
+            #noise = torch.randn_like(latents)
+            noise_offset = 0.05
+            noise = torch.randn_like(latents) + noise_offset * torch.randn(
+                latents.shape[0], latents.shape[1], 1, 1, device=latents.device
+            )
             
             timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=device).long()  
             noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-
-            prompt_embeds = static_prompt_embeds.repeat(bsz, 1, 1)
-            pooled_prompt_embeds = static_pooled_embeds.repeat(bsz, 1)
                 
-            add_time_ids = torch.tensor([[1024, 1024, 0, 0, 1024, 1024]], dtype=torch.float16, device=device)
+            add_time_ids = torch.tensor([[size_img_format, size_img_format, 0, 0, size_img_format, size_img_format]], dtype=torch.float16, device=device)
             add_time_ids = add_time_ids.repeat(bsz, 1) 
 
             added_cond_kwargs = {"text_embeds": pooled_prompt_embeds, "time_ids": add_time_ids}
 
-
             if torch.isnan(latents).any():
-                print("IL COLPETEVOLE È IL VAE: I latenti generati contengono NaN!")
+                print("THE CULPRIT IS THE VAE: Generated latents contain NaNs!")
             if torch.isnan(prompt_embeds).any():
-                print("IL COLPETEVOLE SONO I TEXT ENCODERS: Gli embedding del testo contengono NaN!")
+                print("THE CULPRIT IS THE TEXT ENCODERS: Text embeddings contain NaNs!")
             if torch.isnan(noise).any():
-                print("IL COLPETEVOLE È IL GENERATORE DI RUMORE (noise)!")
+                print("THE CULPRIT IS THE NOISE GENERATOR!")
             if torch.isnan(noisy_latents).any():
-                print("IL COLPETEVOLE È IL NOISE SCHEDULER: Il rumore aggiunto ha generato NaN!")
+                print("THE CULPRIT IS THE NOISE SCHEDULER: Added noise resulted in NaNs!")
 
-
-            with torch.amp.autocast('cuda', dtype=torch.bfloat16):
+            with torch.amp.autocast('cuda', dtype=torch.float16):
                 noise_pred = unet(
                     noisy_latents, 
                     timesteps, 
@@ -190,47 +422,28 @@ def train_lora_custom():
                     added_cond_kwargs=added_cond_kwargs
                 ).sample
 
-            loss = F.mse_loss(noise_pred.float(), noise.float(), reduction="mean")
+                loss_per_sample = F.mse_loss(noise_pred.float(), noise.float(), reduction="none").mean(dim=(1, 2, 3))
+                loss = F.mse_loss(noise_pred.float(), noise.float(), reduction="mean")
+                loss = loss / gradient_accumulation_steps
 
-            loss = loss / gradient_accumulation_steps
+                bin_idx = torch.clamp(timesteps * n_bins // T, max=n_bins - 1)
+                bin_sum.index_add_(0, bin_idx, loss_per_sample.detach())
+                bin_cnt.index_add_(0, bin_idx, torch.ones_like(loss_per_sample))
+
             scaler.scale(loss).backward()
-
-            print("\n===== GRADIENT CHECK =====")
-
-            for name, param in unet.named_parameters():
-                if param.requires_grad and "lora_" in name:
-                    if param.grad is None:
-                        print(name, "-> GRADIENT = NONE")
-                    else:
-                        print(
-                            name,
-                            "-> GRADIENT MEAN =",
-                            param.grad.detach().float().abs().mean().item()
-                        )
-                    break
-
-            print("\n===== END GRADIENT CHECK =====")
-
             epoch_loss += loss.item() * gradient_accumulation_steps
 
             if (step + 1) % gradient_accumulation_steps == 0 or (step + 1) == len(dataloader):
-                # 1. Riporta i gradienti alla scala normale prima del clipping
-                scaler.unscale_(optimizer) 
-                
-                # 2. Esegui il clip sui parametri attivi
+                scaler.unscale_(optimizer)
+
                 trainable_params = [p for p in unet.parameters() if p.requires_grad]
                 torch.nn.utils.clip_grad_norm_(trainable_params, max_norm=1.0)  
-                
-                # 3. Aggiorna i pesi usando lo scaler (Sostituisce il vecchio optimizer.step())
+
                 scaler.step(optimizer)
-                scaler.update() # Aggiorna i fattori di scala per il prossimo step
+                scaler.update()
                 
-                # 4. Fai avanzare lo scheduler del Learning Rate
                 lr_scheduler.step()
-                
-                # 5. Resetta per il prossimo giro
                 optimizer.zero_grad()
-                global_step += 1
 
                 current_loss = loss.item() * gradient_accumulation_steps if not torch.isnan(loss) else 0.0
                 progress_bar.set_postfix({
@@ -238,9 +451,7 @@ def train_lora_custom():
                     "lr": f"{lr_scheduler.get_last_lr()[0]:.1e}"
                 })
 
-
         print("\n===== LORA WEIGHT CHECK =====")
-
         for name, param in unet.named_parameters():
             if param.requires_grad and "lora_" in name:
                 print(
@@ -253,7 +464,6 @@ def train_lora_custom():
 
 
         print("\n===== LORA UPDATE CHECK =====")
-
         for name, param in unet.named_parameters():
             if name in initial_lora:
 
@@ -266,13 +476,134 @@ def train_lora_custom():
 
 
         media_loss = epoch_loss / len(dataloader)
+        bin_loss = (bin_sum / bin_cnt.clamp(min=1)).cpu().tolist()
+        #current_lr = lr_scheduler.get_last_lr()[0]
+        current_lr = optimizer.param_groups[0]['lr']
+
+        lora_mean_abs = 0.0
+        lora_mean_change = 0.0
+        count_lora_tensors = 0
+
+        for name, param in unet.named_parameters():
+            if param.requires_grad and "lora_" in name:
+                lora_mean_abs += param.detach().float().abs().mean().item()
+
+                if name in initial_lora:
+                    diff = (param.detach().float().cpu() - initial_lora[name]).abs().mean().item()
+                    lora_mean_change += diff
+                    
+                count_lora_tensors += 1
+
+        if count_lora_tensors > 0:
+            lora_mean_abs /= count_lora_tensors
+            lora_mean_change /= count_lora_tensors
+
+        print(f"\n-> End Epoch {epoch+1}/{num_epochs}")
+        print(f"   Average Loss     : {media_loss:.6f}")
+        print(f"   Learning Rate    : {current_lr:.2e}")
+        print(f"   LoRA Mean Abs    : {lora_mean_abs:.6f}")
+        print(f"   LoRA Mean Change : {lora_mean_change:.6f}\n")
+
+        loss_history.append({
+            "epoch": epoch + 1,
+            "average_loss": media_loss,
+            "learning_rate": current_lr,
+            "lora_mean_abs": lora_mean_abs,
+            "lora_mean_change": lora_mean_change
+        })
+
         print(f"-> End Epoch {epoch+1} - Average Loss: {media_loss:.6f}\n")
+
+        with open(loss_history_path, "w", newline="") as f:
+            writer = csv.DictWriter(
+                f,
+                fieldnames=["epoch", "average_loss", "learning_rate", "lora_mean_abs", "lora_mean_change"]
+            )
+            writer.writeheader()
+            writer.writerows(loss_history)
+
+        bin_row = {"epoch": epoch + 1}
+        
+        for i, v in enumerate(bin_loss):
+            start = -(-i * T // n_bins)
+            end = -(-(i + 1) * T // n_bins) - 1
+            bin_row[f"loss_bin{i}_t{start}-{end}"] = v
+        bins_history.append(bin_row)
+
+        with open(bins_history_path, "w", newline="") as f:
+            writer = csv.DictWriter(
+                f, 
+                fieldnames=list(bin_row.keys())
+            )
+            writer.writeheader()
+            writer.writerows(bins_history) 
 
         print(f"Saving checkpoint Epoch {epoch+1}...")
         cartella_epoca = get_full_path(output_dir_weights_epoch, f"epoch_{epoch+1}")
         unet.save_pretrained(cartella_epoca)
         print(f"Checkpoint saved: {cartella_epoca}\n")
-        #print(f"Epoch {epoch+1}/{num_epochs} - Loss: {epoch_loss/len(dataloader):.4f}")
+
+        if (epoch + 1) % 5 == 0 or epoch == 0:
+            print(f"\n--- Validation Image Generation (Epoch {epoch+1}) ---")
+            unet.eval()
+            pipe.unet = unet
+
+            val_guidance = 6.0 if use_captions else 1.0
+            prompts = VAL_PROMPTS if use_captions else [""]
+
+            generated = []
+            
+            with torch.no_grad():
+                with torch.amp.autocast('cuda', dtype=torch.float16):
+                    for p_idx, prompt in enumerate(prompts):
+                        for seed in VAL_SEEDS:
+                            val_generator = torch.Generator(device=device).manual_seed(seed)
+                            
+                            output = pipe(
+                                prompt=prompt,
+                                negative_prompt="color, photorealistic, 3d render, water, trees",
+                                num_inference_steps=30,
+                                guidance_scale=val_guidance,
+                                original_size=(1024, 1024),
+                                target_size=(1024, 1024),
+                                generator=val_generator,
+                                output_type="latent"
+                            )
+
+                            lat = output.images[0] if isinstance(output.images, list) else output.images
+                            generated.append((p_idx, seed, lat))
+
+            from diffusers import AutoencoderKL
+            from PIL import Image
+
+            temp_vae = AutoencoderKL.from_pretrained(
+                "stabilityai/stable-diffusion-xl-base-1.0",
+                subfolder="vae", 
+                torch_dtype=torch.float32
+            ).to(device)
+            temp_vae.enable_tiling()
+
+            visual_output_dir = get_full_path(output_dir_weights_epoch, "training_progress_images")
+            os.makedirs(visual_output_dir, exist_ok=True)
+
+            with torch.no_grad():
+                for p_idx, seed, lat in generated:
+                    scaled = (lat / temp_vae.config.scaling_factor).to(device, dtype=torch.float32)
+                    decoded = temp_vae.decode(scaled).sample
+                    decoded = (decoded / 2 + 0.5).clamp(0, 1)
+                    decoded = decoded.cpu().permute(0, 2, 3, 1).float().numpy()
+                    gray = decoded[0].mean(axis=-1)
+                    val_image = Image.fromarray(np.round(gray * 65535.0).astype(np.uint16))
+                    val_path = get_full_path(visual_output_dir, f"sample_epoch_{epoch+1:03d}_p{p_idx}_s{seed}.png")
+                    val_image.save(val_path)
+                    print(f"Image saved in: {val_path}")
+
+            del temp_vae
+            torch.cuda.empty_cache()
+            print("VAE removed from VRAM. Memory cleared to resume training.")
+
+            unet.train()
+            print("--- Continue Training ---\n")
 
     print("Saving the final model...")
     cartella_model_final = get_full_path(output_dir_model)
@@ -280,4 +611,4 @@ def train_lora_custom():
     print(f"Training completed! Final weights saved in: {cartella_model_final}")
 
 if __name__ == "__main__":
-    train_lora_custom()
+    train_lora_custom(TrainingConfig)

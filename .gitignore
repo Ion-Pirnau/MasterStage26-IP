@@ -2,6 +2,10 @@
 __pycache__/
 *.pyc
 .vscode
-data/heightmaps/heightmap_exr
-data/heightmaps/heightmap_png
+data/heightmaps
+data/meshes
+data/viewer_blend
+data/tiff_to_convert
 data/sdxl_model
+data/model_weights
+data/renders

@@ -1,47 +1,90 @@
 import os
 import numpy as np
-import bpy, json, random, sys
+import bpy, random, sys
 import mathutils, math
 sys.path.append(os.path.dirname(os.path.dirname(__file__))) 
 
-from utils.utils_method import get_full_path, obj_to_off
+from utils.utils_method import get_full_path, obj_to_off, load_config
 from utils.constants import *
 
-def load_config():
+def build_optimized_prompt(params_dict):
     """
-    Loads the configuration file in JSON format.
-
-    This function reads the global CONFIG_FILE and parses its content
-    into a Python dictionary. In case of failure, it handles file-related
-    exceptions and returns None.
-
-    Parameters
-    ----------
-    None
-
-    Returns
-    -------
-    dict or None
-        Parsed configuration dictionary if successful, otherwise None.
-
-    Raises
-    ------
-    None
-        Exceptions are caught internally and reported via print.
-
-    Notes
-    -----
-    - The configuration file is expected to be in valid JSON format.
-    - Errors during file access or parsing are handled gracefully.
+    Builds an optimized, semantic text prompt for Stable Diffusion training.
+    It automatically converts numerical continuous parameters into discrete 
+    semantic text tags (e.g., 'high mountain steepness') based on min/max ranges.
     """
 
-    print(CONFIG_FILE)
-    try:
-        with open(CONFIG_FILE, 'r') as f:
-            return json.load(f)
-    except (FileNotFoundError, IOError) as e:
-        print(f"Error during opening: {e}")
-        return None
+    ranges = {
+        "Scale_Noise_One": (0.21, 1.0),
+        "Scale_Noise_Two": (0.11, 0.9),
+        "Noise Scale Erosione": (0.1, 2.5),
+        "Profondita Erosione": (0.1, 0.2),
+        "Distance Min": (3.0, 8.0),
+        "Density Max": (0.005, 1.5),
+        "Vulcani_Altezza": (0.1, 2.0),
+        "Vulcani_Raggio_Interno": (0.0, 0.9),
+        "Vulcani_Raggio_Esterno": (0.0, 1.0),
+        "Scale": (0.1, 1.0),
+        "Campo di Forza": (90.0, 180.0),
+        "Altezza Max Montagna": (10.0, 28.0),
+        "Ripidita Montagna": (20.0, 200.0),
+        "Larghezza Montagna": (1.0, 6.0),
+        "Length": (0.0, 3.0),
+        "Angle": (10.0, 100.0),
+        "Height": (0.0, 0.3)
+    }
+
+    def get_level(param_name, val):
+        min_v, max_v = ranges[param_name]
+        if max_v == min_v: return "medium"
+    
+        percent = (val - min_v) / (max_v - min_v)
+        percent = max(0.0, min(1.0, percent))
+
+        if percent < 0.20: return "very low"
+        elif percent < 0.40: return "low"
+        elif percent < 0.60: return "medium"
+        elif percent < 0.80: return "high"
+        else: return "very high"
+
+    caption_elements = ["heightmap terrain"]
+
+    # Base Noise
+    caption_elements.append(f"{get_level('Scale_Noise_One', params_dict['Scale_Noise_One'])} base noise")
+    caption_elements.append(f"{get_level('Scale_Noise_Two', params_dict['Scale_Noise_Two'])} secondary noise")
+
+    # Erosion
+    if params_dict['Attiva Erosione']:
+        caption_elements.append("erosion")
+        caption_elements.append(f"{get_level('Noise Scale Erosione', params_dict['Noise Scale Erosione'])} erosion frequency")
+        caption_elements.append(f"{get_level('Profondita Erosione', params_dict['Profondita Erosione'])} erosion depth")
+
+    # Craters
+    if params_dict['Attiva Crateri']:
+        caption_elements.append("craters")
+        caption_elements.append(f"{get_level('Distance Min', params_dict['Distance Min'])} crater spacing")
+        caption_elements.append(f"{get_level('Density Max', params_dict['Density Max'])} crater density")
+        caption_elements.append(f"{get_level('Vulcani_Altezza', params_dict['Vulcani_Altezza'])} crater height")
+        caption_elements.append(f"{get_level('Vulcani_Raggio_Interno', params_dict['Vulcani_Raggio_Interno'])} inner radius")
+        caption_elements.append(f"{get_level('Vulcani_Raggio_Esterno', params_dict['Vulcani_Raggio_Esterno'])} outer radius")
+
+    # Mountain
+    if params_dict['Attiva Montagna']:
+        caption_elements.append("mountains")
+        caption_elements.append(f"{get_level('Scale', params_dict['Scale'])} mountain scale")
+        caption_elements.append(f"{get_level('Campo di Forza', params_dict['Campo di Forza'])} force field")
+        caption_elements.append(f"{get_level('Altezza Max Montagna', params_dict['Altezza Max Montagna'])} mountain height")
+        caption_elements.append(f"{get_level('Ripidita Montagna', params_dict['Ripidita Montagna'])} mountain steepness")
+        caption_elements.append(f"{get_level('Larghezza Montagna', params_dict['Larghezza Montagna'])} mountain width")
+
+    # Fan
+    if params_dict['Attiva Fan']:
+        caption_elements.append("alluvial fan")
+        caption_elements.append(f"{get_level('Length', params_dict['Length'])} fan length")
+        caption_elements.append(f"{get_level('Angle', params_dict['Angle'])} fan angle")
+        caption_elements.append(f"{get_level('Height', params_dict['Height'])} fan height")
+
+    return ", ".join(caption_elements)
 
 def set_modifier_value(modifier, identifier, value):
     """
@@ -88,43 +131,42 @@ def set_modifier_value(modifier, identifier, value):
 
 def export_heightmap_exr(obj, filepath, res_x, res_y) -> bool:
     """
-    Generates and exports a heightmap image from a 3D terrain mesh.
+    Export a normalized grayscale heightmap of a terrain using ray casting.
 
-    This function performs ray casting over a grid defined by the given
-    resolution to sample height values from the evaluated mesh. The resulting
-    height values are normalized and saved as a grayscale image.
+    A regular grid of ``res_x`` x ``res_y`` sample points is laid over the
+    world-space bounding box of the evaluated terrain. From each sample point
+    a ray is cast straight down (-Z) and the Z coordinate of the hit is
+    stored. The heights are then normalized to the [0, 1] range and written
+    to an image file as a grayscale picture (R = G = B, alpha = 1).
 
     Parameters
     ----------
     obj : bpy.types.Object
-        The terrain object from which to extract height data.
-
+        Terrain object whose evaluated geometry (modifiers and Geometry
+        Nodes applied) is sampled.
     filepath : str
-        Output path where the heightmap image will be saved.
-
+        Destination path of the output image.
     res_x : int
-        Horizontal resolution of the heightmap.
-
+        Image width in pixels (number of samples along X).
     res_y : int
-        Vertical resolution of the heightmap.
+        Image height in pixels (number of samples along Y).
 
     Returns
     -------
     bool
-        True if the heightmap is successfully generated and saved,
-        False otherwise.
-
-    Raises
-    ------
-    None
-        Errors are handled internally with print messages.
+        True if the image was generated and saved, False if ``obj`` is
+        missing.
 
     Notes
     -----
-    - Uses ray casting from above the terrain to sample heights.
-    - The evaluated mesh (with modifiers applied) is used.
-    - Output is a normalized grayscale image (R=G=B).
-    - Requires NumPy and Blender's mathutils module.
+    - Rays start 10 units above the highest point of the bounding box.
+    - Samples that miss the geometry are assigned the bounding-box minimum Z.
+    - The file format is taken from the module constant ``FILE_FORMAT_IMG``.
+    - Normalization is relative to the sampled min/max, so absolute heights
+      are not preserved (a flat terrain produces a fully black image).
+    - Any existing image named ``INBLEND_IMAGE_NAME`` is replaced.
+    - ``bpy.context.scene.ray_cast`` tests the whole scene, not only ``obj``.
+    - Requires NumPy and Blender's ``mathutils``.
     """
 
     if not obj:
@@ -200,48 +242,40 @@ def export_heightmap_exr(obj, filepath, res_x, res_y) -> bool:
 
 def export_heightmap_asc(obj, filepath, res_x, res_y) -> bool:
     """
-    Exports a terrain heightmap in ESRI ASCII Grid (.asc) format.
+    Export a terrain heightmap as an ESRI ASCII Grid (.asc) file.
 
-    This function samples elevation values from a 3D terrain mesh using
-    ray casting over a regular grid. The sampled heights are written to
-    an ASCII raster file, including a GIS-compatible header describing
-    spatial metadata.
+    The evaluated terrain is sampled with downward ray casting over a regular
+    grid covering its world-space bounding box. The raw (non-normalized)
+    heights are written as text, preceded by a GIS-compatible header.
 
     Parameters
     ----------
     obj : bpy.types.Object
-        The terrain object from which elevation data is extracted.
-
+        Terrain object whose evaluated geometry is sampled.
     filepath : str
-        Output path for the generated .asc file.
-
+        Destination path of the ``.asc`` file.
     res_x : int
-        Number of columns (horizontal resolution) of the grid.
-
+        Number of grid columns (samples along X).
     res_y : int
-        Number of rows (vertical resolution) of the grid.
+        Number of grid rows (samples along Y).
 
     Returns
     -------
     bool
-        True if the export is successful, False otherwise.
-
-    Raises
-    ------
-    None
-        File I/O errors are handled internally.
+        True if the file was written, False if ``obj`` is missing or an
+        I/O error occurs.
 
     Notes
     -----
-    - The function uses ray casting from above the terrain to sample heights.
-    - The evaluated mesh (with modifiers applied) is used.
-    - The output follows the ESRI ASCII Grid specification:
-        * ncols, nrows
-        * xllcorner, yllcorner
-        * cellsize
-        * NODATA_value
-    - Grid data is written from top row to bottom row, as required by the format.
-    - Missing values are filled with -9999.
+    - The header contains ``ncols``, ``nrows``, ``xllcorner``, ``yllcorner``,
+      ``cellsize`` and ``NODATA_value`` (-9999).
+    - ``cellsize`` is computed from the X step only, so square cells are
+      assumed.
+    - Rows are written from top (max Y) to bottom (min Y), as the format
+      requires.
+    - Samples that miss the geometry are written as -9999.
+    - Rays start 10 units above the highest point of the bounding box.
+    - File I/O errors are caught and reported with a printed message.
     """
 
     if not obj:
@@ -314,45 +348,50 @@ def export_heightmap_asc(obj, filepath, res_x, res_y) -> bool:
 
 def export_hillshade(obj, filepath, res_x, res_y):
     """
-    Generates and renders a hillshade visualization of a terrain.
+    Render a GIS-style hillshade image of the terrain.
 
-    This function configures the Blender scene to simulate a GIS-style
-    hillshade rendering by adjusting lighting, materials, camera, and
-    ambient occlusion settings. The terrain is rendered using an orthographic
-    projection to produce a top-down shaded relief image.
+    The function prepares the scene for a top-down shaded-relief render:
+    it sets the output resolution and format, creates a neutral gray
+    material and assigns it to the terrain's Geometry Nodes ``Set Material``
+    nodes, adjusts the sun light strength and the world's ambient occlusion
+    node, fits the orthographic camera to the landscape size, and finally
+    renders a still image to ``filepath``.
 
     Parameters
     ----------
     obj : bpy.types.Object
-        The terrain object to be rendered.
-
+        Terrain object to render.
     filepath : str
-        Output path for the rendered hillshade image.
-
+        Destination path of the rendered image.
     res_x : int
-        Horizontal resolution of the output image.
-
+        Render width in pixels.
     res_y : int
-        Vertical resolution of the output image.
+        Render height in pixels.
 
     Returns
     -------
     bool
-        True if the rendering completes successfully, False otherwise.
-
-    Raises
-    ------
-    None
-        Errors are handled internally and reported via print statements.
+        True once the render has completed, False if ``obj`` is missing.
 
     Notes
     -----
-    - Uses an orthographic camera positioned above the terrain.
-    - Applies a neutral material override to enhance shading visibility.
-    - Configures a directional light (SUN) to simulate illumination angle.
-    - Adjusts Ambient Occlusion parameters to improve terrain detail perception.
-    - The rendering is performed using Blender's rendering engine.
-    - The camera is automatically scaled to fully cover the terrain bounding box.
+    - Output format and color mode come from the module constants
+      ``EXTENSION_HILLSHADE`` and ``COLOR_MODE_HILLSHADE``.
+    - The "GIS_Hillshade" material (gray, fully rough, no specular) is created
+      only if it does not already exist. If it already exists, the local
+      variable ``mat`` is never assigned and the code below raises an error;
+      it should be fetched from ``bpy.data.materials`` in that case.
+    - The material is applied by editing ``Set Material`` nodes of the
+      modifier named ``MODIFIERS_NAME_GM``; the scene-wide material override
+      is commented out.
+    - The first sun light found in the scene gets its energy set to 1.25.
+      Its rotation and location are left unchanged.
+    - If a world node named "Ambient Occlusion" exists, its distance is set
+      to 5.0 and its color to white.
+    - The camera's ``ortho_scale`` is set to the landscape size read from the
+      Geometry Nodes input ``LANDSCAPE_NODE_MODIFIER`` (default 10.0). Camera
+      type, position and clipping are not modified here and must already be
+      configured.
     """
 
     if not obj:
@@ -437,11 +476,78 @@ def export_hillshade(obj, filepath, res_x, res_y):
 
     return True
 
+def write_on_file(filepath: str, content: str) -> None:
+    """
+    Write a text string to a file, creating parent folders if needed.
+
+    In this pipeline it is used to save the text caption (prompt) that
+    describes the procedural parameters of each generated terrain, for
+    Stable Diffusion XL dataset training.
+
+    Parameters
+    ----------
+    filepath : str
+        Path of the destination file (e.g. a ``.txt`` file). Its parent
+        directories are created if they do not exist.
+    content : str
+        Text to write. The file is overwritten and saved as UTF-8.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    - ``filepath`` must include a directory part; a bare file name makes
+      ``os.makedirs("")`` fail.
+    """
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    
+    with open(filepath, "w", encoding="utf-8") as file:
+        file.write(content)
+
+
 
 def export_maps_via_render(obj, filepath_heightmap, filepath_splatmap, res_x, res_y, material_socket_id, isSplatActive=False):
     """
-    Esporta sia la Heightmap (EXR) che la Splatmap (PNG) usando la Camera Ortografica.
-    Utilizza l'interruttore booleano dei Geometry Nodes per cambiare materiale.
+    Render the heightmap (EXR) and optionally the splatmap (PNG) of a terrain.
+
+    Both maps are produced by rendering through the active orthographic
+    camera. A boolean input of the terrain's Geometry Nodes modifier switches
+    the material between a grayscale height material (heightmap) and an RGB
+    mask material (splatmap).
+
+    Parameters
+    ----------
+    obj : bpy.types.Object
+        Terrain object with a Geometry Nodes modifier named "GeometryNodes".
+    filepath_heightmap : str
+        Destination path of the heightmap (OpenEXR).
+    filepath_splatmap : str
+        Destination path of the splatmap (8-bit RGB PNG).
+    res_x : int
+        Render width in pixels.
+    res_y : int
+        Render height in pixels.
+    material_socket_id : str
+        Identifier of the modifier input that toggles the material type
+        (False = heightmap material, True = splatmap material).
+    isSplatActive : bool, optional
+        If True, the splatmap is rendered after the heightmap.
+        Default is False.
+
+    Returns
+    -------
+    bool
+        True if the render(s) completed, False if the terrain object, the
+        active camera or the modifier is missing.
+
+    Notes
+    -----
+    - The view transform is set to 'Standard' so that values are not
+      altered by tone mapping.
+    - The resolution percentage is forced to 100.
+    - The switch is left set to its last value after the function ends.
     """
     
     if not obj:
@@ -465,15 +571,13 @@ def export_maps_via_render(obj, filepath_heightmap, filepath_splatmap, res_x, re
         return False
 
     # ==========================================
-    # FASE 1: RENDER HEIGHTMAP (Scala di Grigi)
+    # PHASE 1: RENDER HEIGHTMAP (Gray scale)
     # ==========================================
-    print("Generazione Heightmap in corso...")
     
     # Imposta lo switch del materiale su False (Heightmap)
     mod[material_socket_id] = False 
     
     scene.render.image_settings.file_format = 'OPEN_EXR'
-    print(filepath_heightmap)
     scene.render.filepath = filepath_heightmap
     
     bpy.ops.render.render(write_still=True)
@@ -481,12 +585,10 @@ def export_maps_via_render(obj, filepath_heightmap, filepath_splatmap, res_x, re
 
 
     # ==========================================
-    # FASE 2: RENDER SPLATMAP (Colori Maschere RGB)
+    # [PHASE] 2: RENDER SPLATMAP (RGB Mask)
     # ==========================================
 
     if isSplatActive:
-        print("Generazione Splatmap in corso...")
-        
         mod[material_socket_id] = True 
         
         scene.render.image_settings.file_format = 'PNG'
@@ -502,16 +604,17 @@ def export_maps_via_render(obj, filepath_heightmap, filepath_splatmap, res_x, re
 
 def generate_terrain():
     """
-    Generates terrain samples using Geometry Nodes and exports dataset outputs.
+    Generate procedural terrains and export the dataset outputs.
 
-    This function loads configuration parameters, applies them to a terrain
-    object via its Geometry Nodes modifier, and generates multiple terrain
-    instances depending on the selected mode (fixed or random).
+    The function loads the configuration, selects the active camera, and
+    then, for each terrain to generate, assigns the Geometry Nodes parameters,
+    writes a text caption describing them, and exports the enabled outputs.
 
-    For each generated terrain, it can optionally:
-    - Render an image
-    - Export the mesh (OBJ and OFF)
-    - Generate and save a heightmap
+    Generation modes (``dataset_settings["generation_mode"]``):
+    - "fixed": a single terrain using the ``value`` of each parameter.
+    - "random": ``num_terrains_to_generate`` terrains, with parameters
+      sampled by type (boolean from ``probability``; int and float from
+      ``min``/``max``).
 
     Parameters
     ----------
@@ -521,21 +624,25 @@ def generate_terrain():
     -------
     None
 
-    Raises
-    ------
-    None
-        Errors are handled internally or propagated from Blender operations.
-
     Notes
     -----
-    - Supports two modes:
-        * "fixed": uses predefined parameter values
-        * "random": samples parameters based on ranges/probabilities
-    - Requires a valid Blender scene with:
-        * A terrain object (TERRAIN_NAME)
-        * A Geometry Nodes modifier (MODIFIERS_NAME_GM)
-    - Outputs are controlled via the dataset_settings section of the config.
-    - Geometry Nodes parameters are dynamically applied using set_modifier_value().
+    - Requires a terrain object named ``TERRAIN_NAME`` with a Geometry Nodes
+      modifier named ``MODIFIERS_NAME_GM``.
+    - The ortho top camera (``CAMERA_ORTHO_ON_TOP``) or the side camera
+      (``CAMERA_ON_SIDE``) is activated according to
+      ``camera_ortho_active``.
+    - Parameters are applied with ``set_modifier_value()`` and the caption is
+      built by ``build_optimized_prompt()`` and saved with ``write_on_file()``.
+    - Each export is enabled by a flag in ``dataset_settings``:
+      ``export_render_png`` (render), ``export_mesh_off`` (OBJ + OFF mesh),
+      ``export_heightmap_exr_with_splat`` (render-based heightmap and
+      optional splatmap), ``export_heightmap_exr`` (ray-cast EXR),
+      ``export_heightmap_asc`` (ESRI ASCII grid) and ``export_hillshade``.
+    - The resolution is set by the module constant ``RESOLUTION_XY``.
+    - At the end of each terrain it prints "BLENDER_IMAGE_DONE", presumably
+      used by an external process to detect completion.
+    - Missing objects or modifiers are not checked here and will raise an
+      exception.
     """
 
     config = load_config()
@@ -569,6 +676,9 @@ def generate_terrain():
 
     for i in range(num_to_generate):
         print(f"\n--- Generation {i+1}/{num_to_generate} ---")
+
+        current_image_params = {}
+
         for param_name, param_data in params.items():
             if mode == GENERATION_MODE_FIXED:
                 val = param_data["value"]
@@ -579,10 +689,19 @@ def generate_terrain():
                     val = random.randint(int(param_data["min"]), int(param_data["max"]))
                 else:
                     val = random.uniform(param_data["min"], param_data["max"])
+
             set_modifier_value(mod, param_name, val)
-            print(f"Set {param_name} = {val}")
+
+            current_image_params[param_name] = val
 
         bpy.context.view_layer.update()
+
+        final_prompt = build_optimized_prompt(current_image_params)
+
+        text_filename = f"{NAME_HEIGHTMAPS}{i:04d}.{TXT_EXTENSION}"
+        text_filepath = get_full_path(PATH_CAPTIONS_IMG, text_filename)
+
+        write_on_file(text_filepath, final_prompt)
 
         if settings["export_render_png"]:
             print(get_full_path(settings["output_folder_renders"]))
@@ -602,7 +721,7 @@ def generate_terrain():
 
             obj_to_off(obj_path, off_path)
 
-            print(f"Mesh OFF salvata in {off_path}")
+            print(f"Mesh OFF saved in {off_path}")
 
         if settings["export_heightmap_exr_with_splat"]:
             export_maps_via_render(terrain_obj,
@@ -632,6 +751,8 @@ def generate_terrain():
                              render_path,
                              res_x=res_xy,
                              res_y=res_xy)
+
+        print("BLENDER_IMAGE_DONE", flush=True)
 
 
 

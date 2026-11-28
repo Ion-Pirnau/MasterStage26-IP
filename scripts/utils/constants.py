@@ -5,7 +5,9 @@ BLENDER_EXECUTABLE = "C:\\Program Files\\Blender Foundation\\Blender 4.2\\blende
 
 # PATH CONSTANTS
 BLEND_FILE = get_full_path("terrain_generator", "terreno_procedurale_tesi_features.blend")
+BLEND_FILE_VIEWER = get_full_path("terrain_generator", "view_heightmap.blend")
 BLENDER_SCRIPT = get_full_path("scripts", "generator", "blender_generator.py")
+BLENDER_SCRIPT_CONVERTER = get_full_path("scripts", "generator", "blender_visualizer.py")
 CONFIG_FILE = get_full_path("terrain_generator", "dataset_setting.json")
 HEIGHTMAPS_EXR_LOCATION = get_full_path("data", "heightmaps", "heightmap_exr")
 HEIGHTMAPS_PNG_LOCATION = get_full_path("data", "heightmaps", "heightmap_png")
@@ -65,6 +67,7 @@ TIFF_FOLDER = "tiff_to_convert"
 MESH_FOLDER = "meshes"
 OUTPUT_TIFF_OFF_CONVERT_NAME = "convert_tiff_off_"
 TIFF_EXTENSION = "tif"
+TXT_EXTENSION = "txt"
 OFF_EXTENSION = "off"
 OBJ_EXTENSION = "obj"
 
@@ -74,17 +77,31 @@ NAME_GENERATED_TERRAIN = "newterrain_"
 EXTENSION_RENDERING = "png"
 INBLEND_IMAGE_NAME = "Heightmap_Export"
 FILE_FORMAT_IMG = "OPEN_EXR"
-NAME_HEIGHTMAPS = "heightmap0_"
+NAME_HEIGHTMAPS = "heightmap10_"
 NAME_HILLSHADE = "hillshade_"
 EXTENSION_HEIGHTMAP_EXR = "exr"
 EXTENSION_HEIGHTMAP_ASC = "asc"
 EXTENSION_HILLSHADE = "PNG"
 COLOR_MODE_HILLSHADE = "BW"
-RESOLUTION_XY = 2048
+RESOLUTION_XY = 1024
 
+
+# FOR BLENDER VIEWER AND BLENDER CONVERSION
+VIEWER_BLEND_IMG_IN = get_full_path("data", "viewer_blend")
+VIEWER_BLEND_IMG_OUT = get_full_path("data", "viewer_blend")
 
 # FOR STABLE DIFFUSION MODEL XL
 PATH_FOLDER_SDXL = "data/renders/sdxl_img"
+PATH_FOLDER_GAN = "data/renders/gan_img"
+PATH_CAPTIONS_IMG = "data/heightmaps/captions_img"
+PATH_CAPTIONS_VALIDATION = "data/heightmaps/captions_img_val"
+PATH_DATASET_VALIDATION = "data/heightmaps/heightmap_png_val"
 PATH_DATASET_GENERATED = "data/heightmaps/heightmap_png"
-PATH_MODEL_WEIGHTS= "data/sdxl_model/weights"
-PATH_MODEL_SINGLE_EPOCH_WEIGHTS= "data/sdxl_model/weights_epoch"
+PATH_DATASET_GENERATED_OPT = "data/heightmaps/heightmap_png_opt"
+PATH_MODEL_WEIGHTS = "data/model_weights/weights"
+PATH_MODEL_SINGLE_EPOCH_WEIGHTS= "data/model_weights/weights_epoch"
+PATH_MODEL_SDXL_ORI = "data/model_weights"
+# To be used in TerrainDataset once the mountain height value range is better defined
+HEIGHT_MIN = 0.0
+HEIGHT_MAX = 1.0
+CAPTIONS_ENABLED = True

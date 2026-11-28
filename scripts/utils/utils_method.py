@@ -1,6 +1,6 @@
-import os
 from pathlib import Path
 import numpy as np
+import json
 
 
 def obj_to_off(obj_path: str, off_path: str) -> bool:
@@ -165,3 +165,43 @@ def save_off(vertices, faces, filename):
         
         for face in faces:
             f.write(f"3 {face[0]} {face[1]} {face[2]}\n")
+
+
+def load_config():
+    """
+    Loads the configuration file in JSON format.
+
+    This function reads the global CONFIG_FILE and parses its content
+    into a Python dictionary. In case of failure, it handles file-related
+    exceptions and returns None.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    dict or None
+        Parsed configuration dictionary if successful, otherwise None.
+
+    Raises
+    ------
+    None
+        Exceptions are caught internally and reported via print.
+
+    Notes
+    -----
+    - The configuration file is expected to be in valid JSON format.
+    - Errors during file access or parsing are handled gracefully.
+    """
+
+    from utils.constants import CONFIG_FILE
+
+
+    print(CONFIG_FILE)
+    try:
+        with open(CONFIG_FILE, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, IOError) as e:
+        print(f"Error during opening: {e}")
+        return None
